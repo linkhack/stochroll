@@ -1,0 +1,96 @@
+[project]
+name = "stochroll"
+version = "0.1.0"
+description = "Fast vectorized Monte Carlo simulation for dice mechanics"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Patrick Link" },
+]
+keywords = [
+    "dice",
+    "probability",
+    "monte-carlo",
+    "simulation",
+    "tabletop",
+    "rpg",
+    "numpy",
+]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Games/Entertainment :: Role-Playing",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "numpy>=1.26",
+]
+
+[project.urls]
+Homepage = "https://github.com/linkhack/stochroll"
+Repository = "https://github.com/linkhack/stochroll"
+Issues = "https://github.com/linkhack/stochroll/issues"
+Changelog = "https://github.com/linkhack/stochroll/blob/main/CHANGELOG.md"
+
+[build-system]
+requires = ["uv_build>=0.11.32,<0.12"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "mypy",
+    "pytest",
+    "pytest-cov",
+    "ruff",
+    "twine",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "--strict-config",
+    "--strict-markers",
+    "-ra",
+]
+
+[tool.coverage.run]
+source = ["stochroll"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 90
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "B",
+    "E",
+    "F",
+    "I",
+    "RUF",
+    "SIM",
+    "UP",
+    "ANN",
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["stochroll"]
