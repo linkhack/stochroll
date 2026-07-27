@@ -401,23 +401,31 @@ class Roll:
 
     def broadcast_to(self, *shape: int) -> Roll:
         """
-        Broadcast to full trailing shape.
+        Broadcast each simulation sample to a full target shape.
+
+        The repetitions axis is preserved. Existing structural axes align
+        with the target shape from the right, following NumPy broadcasting
+        rules.
 
         Example:
             Roll shape (T,) -> broadcast_to(6) -> (T, 6)
             Roll shape (T, 1) -> broadcast_to(6) -> (T, 6)
+            Roll shape (T, 4) -> broadcast_to(6, 4) -> (T, 6, 4)
             Roll shape (T, 1, 4) -> broadcast_to(6, 4) -> (T, 6, 4)
         """
         if len(shape) == 0:
             return self
 
         values = self.values
+        structural_ndim = values.ndim - 1
+        if structural_ndim < len(shape):
+            values = values.reshape(
+                (values.shape[0],)
+                + (1,) * (len(shape) - structural_ndim)
+                + values.shape[1:]
+            )
 
-        # Add new singleton axes at the end.
-        values = values.reshape(values.shape + (1,) * len(shape))
-
-        # Broadcast those singleton axes.
-        values = np.broadcast_to(values, values.shape[: -len(shape)] + tuple(shape))
+        values = np.broadcast_to(values, (values.shape[0], *shape))
 
         return Roll(values)
 
@@ -471,23 +479,31 @@ class Event:
 
     def broadcast_to(self, *shape: int) -> Event:
         """
-        Broadcast to full trailing shape.
+        Broadcast each simulation sample to a full target shape.
+
+        The repetitions axis is preserved. Existing structural axes align
+        with the target shape from the right, following NumPy broadcasting
+        rules.
 
         Example:
-            Roll shape (T,) -> broadcast_to(6) -> (T, 6)
-            Roll shape (T, 1) -> broadcast_to(6) -> (T, 6)
-            Roll shape (T, 1, 4) -> broadcast_to(6, 4) -> (T, 6, 4)
+            Event shape (T,) -> broadcast_to(6) -> (T, 6)
+            Event shape (T, 1) -> broadcast_to(6) -> (T, 6)
+            Event shape (T, 4) -> broadcast_to(6, 4) -> (T, 6, 4)
+            Event shape (T, 1, 4) -> broadcast_to(6, 4) -> (T, 6, 4)
         """
         if len(shape) == 0:
             return self
 
         values = self.values
+        structural_ndim = values.ndim - 1
+        if structural_ndim < len(shape):
+            values = values.reshape(
+                (values.shape[0],)
+                + (1,) * (len(shape) - structural_ndim)
+                + values.shape[1:]
+            )
 
-        # Add new singleton axes at the end.
-        values = values.reshape(values.shape + (1,) * len(shape))
-
-        # Broadcast those singleton axes.
-        values = np.broadcast_to(values, values.shape[: -len(shape)] + tuple(shape))
+        values = np.broadcast_to(values, (values.shape[0], *shape))
 
         return Event(values)
 

@@ -2,6 +2,7 @@ from operator import add, mul, sub
 
 import numpy as np
 import pytest
+from helpers import FixedRNG
 
 from stochroll import Event, Pool, Roll, Roller
 from stochroll.core import _normalize_axis
@@ -79,13 +80,27 @@ def test_reroll_values_must_be_on_the_die() -> None:
         pool.reroll_once([0, 6, 7])
 
 
-@pytest.mark.parametrize("values", [1.0, [1.0, 2.0]])
-def test_reroll_accepts_integral_float_values(values: object) -> None:
-    pool = Roller(repetitions=2).pool(4, d=6)
+@pytest.mark.parametrize(
+    ("values", "expected"),
+    [
+        (1.0, [[6, 2, 3], [4, 5, 6]]),
+        ([1.0, 2.0], [[6, 6, 3], [4, 5, 6]]),
+    ],
+)
+def test_reroll_accepts_integral_float_values(
+    values: object, expected: list[list[int]]
+) -> None:
+    roller = Roller(repetitions=2)
+    roller.rng = FixedRNG()  # type: ignore[assignment]
+    pool = Pool(
+        np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int8),
+        sides=6,
+        roller=roller,
+    )
 
     result = pool.reroll_once(values)
 
-    assert result.values.shape == pool.values.shape
+    np.testing.assert_array_equal(result.values, expected)
 
 
 @pytest.mark.parametrize("values", [1.5, [1.0, 2.5]])
@@ -139,6 +154,45 @@ def test_direct_pool_roll_event_construction_is_validated() -> None:
 
     with pytest.raises(ValueError, match="repetitions must be >= 1"):
         Event(np.empty((0,), dtype=np.bool_))
+
+    with pytest.raises(ValueError, match="values must be at least 2-D"):
+        Pool(np.empty((2,), dtype=np.int64), sides=6, roller=roller)
+    with pytest.raises(ValueError, match="sides must be >= 1"):
+        Pool(np.ones((2, 1), dtype=np.int64), sides=0, roller=roller)
+    with pytest.raises(ValueError, match="values must be at least 1-D"):
+        Roll(np.array(1, dtype=np.int64))
+    with pytest.raises(ValueError, match="values must be at least 1-D"):
+        Event(np.array(True, dtype=np.bool_))
+
+
+def test_single_requires_a_single_die() -> None:
+    pool = Roller(repetitions=2).pool(2, d=6)
+
+    with pytest.raises(ValueError, match="more than one die"):
+        pool.single()
+
+
+@pytest.mark.parametrize("values", [np.inf, np.nan, [1.0, np.inf]])
+def test_reroll_rejects_nonfinite_values(values: object) -> None:
+    pool = Roller(repetitions=2).pool(2, d=6)
+
+    with pytest.raises(ValueError, match="reroll values must be finite"):
+        pool.reroll_once(values)
+
+
+def test_reroll_rejects_noninteger_types() -> None:
+    pool = Roller(repetitions=2).pool(2, d=6)
+
+    with pytest.raises(TypeError, match="reroll values must be integers"):
+        pool.reroll_once(["1"])
+
+
+def test_uint64_roll_values_are_rejected_at_overflow_boundary() -> None:
+    with pytest.raises(
+        TypeError,
+        match="uint64 Roll values cannot be safely converted",
+    ):
+        Roll(np.array([[2**64 - 1]], dtype=np.uint64))
 
 
 def test_zero_sized_structural_shapes_are_supported() -> None:
