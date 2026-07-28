@@ -1,7 +1,10 @@
+import numpy as np
+from numpy.typing import NDArray
+
 from stochroll import Roller, where
 
 
-def adv_guidance() -> float:
+def adv_guidance() -> NDArray[np.float64]:
     r = Roller(repetitions=1_000_000)
 
     # -------------------------
@@ -66,6 +69,4 @@ def adv_guidance() -> float:
     )
 
     total_effective_damage = hp_damage + splash_damage
-    expected_total_effective_damage = total_effective_damage.expected()
-    assert isinstance(expected_total_effective_damage, float)
-    return expected_total_effective_damage
+    return total_effective_damage.expected()
