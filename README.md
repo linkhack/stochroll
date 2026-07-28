@@ -54,7 +54,7 @@ damage_per_attack = where(
 
 total_damage = damage_per_attack.sum()
 print(f"Expected total damage: {total_damage.expected():.2f}")
-print(f"Expected hits per sample: {hits.count().expected():.2f}")
+print(f"P(4+ hits): {hits.indicator().sum().probability_at_least(4):.1%}")
 ```
 
 The arrays behind these objects have a leading repetitions axis. `shape=6` adds six structural values to each simulation sample, so the second example evaluates six attacks in parallel. `broadcast_to(...)` can expand a shared value or event to match such a structural shape.
@@ -66,9 +66,9 @@ The arrays behind these objects have a leading repetitions axis. `shape=6` adds 
 | `Roller` | Owns the random generator and creates simulations. `d(sides)` creates resolved die rolls; `pool(dice, d=sides)` creates unresolved dice pools. |
 | `Pool` | Represents dice that still need a pool operation. Use `sum`, `min`, `max`, `keep_highest`, `keep_lowest`, `drop_lowest`, `drop_highest`, `drop_lowest_sum`, `reroll_once`, or `count_at_least`. |
 | `Roll` | Represents a resolved numeric outcome for every repetition. Rolls support arithmetic, comparisons, broadcasting, reductions, expected values, and threshold probabilities. |
-| `Event` | Represents a boolean condition for every repetition. Events support `&`, `\|`, `~`, `count()`, and `probability()`. Pass an event to `where` for conditional selection. |
+| `Event` | Represents a boolean condition for every repetition. Events support `&`, `\|`, `~`, `indicator()`, `count()`, and `probability()`. Pass an event to `where` for conditional selection. |
 
-For example, `roller.d(20) >= 15` is an `Event`, while `roller.d(20) + 5` is a `Roll`. Events cannot be used in arithmetic; convert an event to a numeric result with `count()` or choose between outcomes with `where(event, yes, no)`.
+For example, `roller.d(20) >= 15` is an `Event`, while `roller.d(20) + 5` is a `Roll`. Events cannot be used in arithmetic; use `event.indicator()` for a numeric 0/1 score per repetition, `count()` to reduce structural axes, or `where(event, yes, no)` to choose between outcomes.
 
 ## Reproducibility and accuracy
 
