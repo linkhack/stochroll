@@ -53,6 +53,63 @@ def test_event_count_and_probability_reduce_repetitions() -> None:
     np.testing.assert_allclose(event.probability(), [[2 / 3, 2 / 3], [1 / 3, 2 / 3]])
 
 
+def test_event_indicator_preserves_scalar_per_repetition_shape() -> None:
+    event = Event(np.array([True, False, True], dtype=np.bool_))
+
+    indicator: Roll = event.indicator()
+
+    np.testing.assert_array_equal(indicator.values, [1, 0, 1])
+    assert indicator.values.shape == event.values.shape
+    assert np.issubdtype(indicator.values.dtype, np.signedinteger)
+
+
+def test_event_indicator_preserves_shape_and_supports_arithmetic() -> None:
+    values = np.array(
+        [
+            [[True, False], [False, True]],
+            [[False, False], [True, True]],
+        ],
+        dtype=np.bool_,
+    )
+    event = Event(values)
+
+    indicator = event.indicator()
+
+    np.testing.assert_array_equal(
+        indicator.values,
+        [[[1, 0], [0, 1]], [[0, 0], [1, 1]]],
+    )
+    assert indicator.values.shape == event.values.shape
+    np.testing.assert_array_equal(
+        (indicator * 10 + 1).values,
+        [[[11, 1], [1, 11]], [[1, 1], [11, 11]]],
+    )
+
+
+def test_event_indicator_handles_uniform_and_empty_structural_events() -> None:
+    all_true = Event(np.ones((3, 2), dtype=np.bool_))
+    all_false = Event(np.zeros((3, 2), dtype=np.bool_))
+    empty = Event(np.empty((3, 0, 2), dtype=np.bool_))
+
+    np.testing.assert_array_equal(
+        all_true.indicator().values, np.ones((3, 2), dtype=np.int8)
+    )
+    np.testing.assert_array_equal(
+        all_false.indicator().values, np.zeros((3, 2), dtype=np.int8)
+    )
+    assert empty.indicator().values.shape == (3, 0, 2)
+
+
+def test_event_indicator_does_not_mutate_event() -> None:
+    values = np.array([[True, False], [False, True]], dtype=np.bool_)
+    event = Event(values)
+
+    event.indicator()
+
+    np.testing.assert_array_equal(event.values, values)
+    assert event.values.dtype == np.bool_
+
+
 def test_where_selects_rolls_and_scalars() -> None:
     event = Event(np.array([[True, False], [False, True]], dtype=np.bool_))
     yes = Roll(np.array([[10, 20], [30, 40]], dtype=np.int64))

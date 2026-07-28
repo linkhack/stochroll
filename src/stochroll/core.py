@@ -511,6 +511,14 @@ class Event:
         axis = _normalize_reduction_axis(axis, self.values.ndim)
         return Roll(np.count_nonzero(self.values, axis=axis))
 
+    def indicator(self) -> Roll:
+        """Convert each event outcome to a signed integer 0 or 1.
+
+        The repetitions and structural axes are preserved exactly. Use
+        ``count()`` instead when reducing an event's structural axis.
+        """
+        return Roll(self.values.astype(np.int8, copy=False))
+
     def probability(self) -> np.float64 | NDArray[np.float64]:
         k = len(self.values)
         out = cast(
