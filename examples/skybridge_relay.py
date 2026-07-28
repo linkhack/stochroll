@@ -4,11 +4,6 @@ Every leg is a 4d6 check with the lowest die dropped. A team that clears all
 legs earns a finish bonus, and the highest final total wins the relay.
 """
 
-from typing import cast
-
-import numpy as np
-from numpy.typing import NDArray
-
 from stochroll import Roller, where
 
 REPETITIONS = 250_000
@@ -36,10 +31,10 @@ def main() -> None:
     sole_winner = winner_count == 1
     sole_team_wins = team_wins & sole_winner.broadcast_to(TEAMS)
 
-    expected_leg_scores = cast(NDArray[np.float64], leg_scores.expected())
-    expected_cleared_legs = cast(NDArray[np.float64], cleared_legs.expected())
-    expected_team_totals = cast(NDArray[np.float64], team_totals.expected())
-    sole_win_probabilities = cast(NDArray[np.float64], sole_team_wins.probability())
+    expected_leg_scores = leg_scores.expected()
+    expected_cleared_legs = cleared_legs.expected()
+    expected_team_totals = team_totals.expected()
+    sole_win_probabilities = sole_team_wins.probability()
 
     print("\n" + "=" * 72)
     print("SKYBRIDGE RELAY")

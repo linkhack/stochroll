@@ -92,4 +92,4 @@ select = [
 [tool.mypy]
 python_version = "3.12"
 strict = true
-packages = ["stochroll"]
+files = ["src/stochroll", "tests/typing"]

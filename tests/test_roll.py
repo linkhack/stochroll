@@ -124,6 +124,85 @@ def test_roll_reductions_are_exact() -> None:
     np.testing.assert_allclose(roll.probability_at_least(4), [0.5, 0.5, 0.5])
 
 
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (10,),
+        (10, 3),
+        (10, 2, 3),
+    ],
+)
+def test_expected_shape(shape: tuple[int, ...]) -> None:
+    values = np.ones(shape, dtype=np.int64)
+    result = Roll(values).expected()
+
+    assert result.shape == shape[1:]
+    assert result.dtype == np.float64
+
+
+@pytest.mark.parametrize("dtype", [np.dtype(np.int64), np.dtype(np.float32)])
+def test_scalar_roll_statistics_return_numpy_scalars(
+    dtype: np.dtype[Any],
+) -> None:
+    roll = Roll(np.array([1, 2, 4], dtype=dtype))
+
+    expected = roll.expected()
+    probability = roll.probability_at_least(2)
+
+    assert isinstance(expected, np.float64)
+    assert isinstance(probability, np.float64)
+    assert not isinstance(expected, np.ndarray)
+    assert not isinstance(probability, np.ndarray)
+    assert expected.shape == ()
+    assert probability.shape == ()
+    assert expected.dtype == np.dtype(np.float64)
+    assert probability.dtype == np.dtype(np.float64)
+    np.testing.assert_allclose(expected, 7 / 3)
+    np.testing.assert_allclose(probability, 2 / 3)
+
+
+def test_shaped_roll_statistics_preserve_shape_and_float64_dtype() -> None:
+    roll = Roll(
+        np.array(
+            [
+                [[1, 2, 3], [4, 5, 6]],
+                [[2, 3, 4], [5, 6, 7]],
+                [[3, 4, 5], [6, 7, 8]],
+            ],
+            dtype=np.int64,
+        )
+    )
+
+    expected = roll.expected()
+    probability = roll.probability_at_least(5)
+
+    assert isinstance(expected, np.ndarray)
+    assert isinstance(probability, np.ndarray)
+    assert expected.shape == (2, 3)
+    assert probability.shape == (2, 3)
+    assert expected.dtype == np.dtype(np.float64)
+    assert probability.dtype == np.dtype(np.float64)
+    np.testing.assert_allclose(expected, [[2, 3, 4], [5, 6, 7]])
+    np.testing.assert_allclose(
+        probability,
+        [[0, 0, 1 / 3], [2 / 3, 1, 1]],
+    )
+
+
+def test_zero_sized_roll_statistics_preserve_structural_shape() -> None:
+    roll = Roll(np.empty((3, 2, 0), dtype=np.float64))
+
+    expected = roll.expected()
+    probability = roll.probability_at_least(1)
+
+    assert isinstance(expected, np.ndarray)
+    assert isinstance(probability, np.ndarray)
+    assert expected.shape == (2, 0)
+    assert probability.shape == (2, 0)
+    assert expected.dtype == np.dtype(np.float64)
+    assert probability.dtype == np.dtype(np.float64)
+
+
 def test_roll_reductions_accept_structural_axes() -> None:
     roll = Roll(
         np.array(

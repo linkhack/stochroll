@@ -19,6 +19,28 @@ def test_vector_event_probability() -> None:
     np.testing.assert_allclose(event.probability(), [0.75, 0.5])
 
 
+def test_scalar_event_probability_returns_numpy_scalar() -> None:
+    event = Event(np.array([True, False, True], dtype=np.bool_))
+
+    probability = event.probability()
+
+    assert isinstance(probability, np.float64)
+    assert not isinstance(probability, np.ndarray)
+    assert probability.shape == ()
+    assert probability.dtype == np.dtype(np.float64)
+    np.testing.assert_allclose(probability, 2 / 3)
+
+
+def test_zero_sized_event_probability_preserves_structural_shape() -> None:
+    event = Event(np.empty((3, 2, 0), dtype=np.bool_))
+
+    probability = event.probability()
+
+    assert isinstance(probability, np.ndarray)
+    assert probability.shape == (2, 0)
+    assert probability.dtype == np.dtype(np.float64)
+
+
 def test_event_boolean_operators_are_elementwise() -> None:
     left = Event(np.array([[True, False], [False, True]], dtype=np.bool_))
     right = Event(np.array([[True, True], [False, False]], dtype=np.bool_))

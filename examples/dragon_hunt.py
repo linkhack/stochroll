@@ -1,9 +1,6 @@
 """A small vectorized RPG combat: four hunters face a dragon across many rounds."""
 
-from typing import cast
-
 import numpy as np
-from numpy.typing import NDArray
 
 from stochroll import Roll, Roller, where
 
@@ -104,11 +101,11 @@ def main() -> None:
     player_alive = player_hp > 0
     surviving_players = player_alive.count()
 
-    survival_probability = cast(NDArray[np.float64], player_alive.probability())
-    expected_hp = cast(NDArray[np.float64], player_hp.expected())
-    expected_damage_dealt = cast(NDArray[np.float64], player_damage_dealt.expected())
-    expected_hits = cast(NDArray[np.float64], player_hits.expected())
-    expected_damage_taken = cast(NDArray[np.float64], player_damage_taken.expected())
+    survival_probability = player_alive.probability()
+    expected_hp = player_hp.expected()
+    expected_damage_dealt = player_damage_dealt.expected()
+    expected_hits = player_hits.expected()
+    expected_damage_taken = player_damage_taken.expected()
 
     print("\n" + "=" * 72)
     print("DRAGON HUNT")

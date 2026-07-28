@@ -432,24 +432,33 @@ class Roll:
     # ------------------------------------------------------------
     # Statistical summaries
     # ------------------------------------------------------------
-    def expected(self) -> np.float64 | NDArray[np.float64]:
+    def expected(self) -> NDArray[np.float64]:
+        """Return the mean over the repetitions axis.
+
+        Structural axes are preserved and the result uses ``float64``. A
+        scalar-valued Roll may produce a NumPy array scalar, which behaves as
+        a zero-dimensional array.
+        """
         dtype = _default_sum_dtype(self.values.dtype)
         k = len(self.values)
-        out = cast(
-            np.float64 | NDArray[np.float64],
-            np.divide(np.sum(self.values, axis=0, dtype=dtype), k, dtype=np.float64),
+        result = np.divide(
+            np.sum(self.values, axis=0, dtype=dtype),
+            k,
+            dtype=np.float64,
         )
-        return out
+        return cast(NDArray[np.float64], result)
 
-    def probability_at_least(
-        self, target: NumericScalar
-    ) -> np.float64 | NDArray[np.float64]:
+    def probability_at_least(self, target: NumericScalar) -> NDArray[np.float64]:
+        """Return the probability of reaching at least ``target``.
+
+        The repetitions axis is reduced, structural axes are preserved, and
+        the result uses ``float64``. A scalar-valued Roll may produce a NumPy
+        array scalar, which behaves as a zero-dimensional array.
+        """
         k = len(self.values)
-        out = cast(
-            np.float64 | NDArray[np.float64],
-            np.count_nonzero(self.values >= target, axis=0),
-        )
-        return np.divide(out, k, dtype=np.float64)
+        out = np.count_nonzero(self.values >= target, axis=0)
+        result = np.divide(out, k, dtype=np.float64)
+        return cast(NDArray[np.float64], result)
 
 
 # ============================================================
@@ -519,12 +528,17 @@ class Event:
         """
         return Roll(self.values.astype(np.int8, copy=False))
 
-    def probability(self) -> np.float64 | NDArray[np.float64]:
+    def probability(self) -> NDArray[np.float64]:
+        """Return the probability that this event is true.
+
+        The repetitions axis is reduced, structural axes are preserved, and
+        the result uses ``float64``. A scalar-valued Event may produce a NumPy
+        array scalar, which behaves as a zero-dimensional array.
+        """
         k = len(self.values)
-        out = cast(
-            np.float64 | NDArray[np.float64], np.count_nonzero(self.values, axis=0)
-        )
-        return np.divide(out, k, dtype=np.float64)
+        out = np.count_nonzero(self.values, axis=0)
+        result = np.divide(out, k, dtype=np.float64)
+        return cast(NDArray[np.float64], result)
 
 
 # ============================================================
