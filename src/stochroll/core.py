@@ -144,9 +144,9 @@ def _normalize_lookup_indices[DType: np.generic](
             normalized = normalized.reshape(shape)
         else:
             lookup_size = normalized.shape[1]
-            shape = [1] * values.ndim # [1,1,1]
-            shape[0] = repetitions # [R,1,1]
-            shape[axis] = lookup_size # [R,T,1] or [R,1,T]
+            shape = [1] * values.ndim  # [1,1,1]
+            shape[0] = repetitions  # [R,1,1]
+            shape[axis] = lookup_size  # [R,T,1] or [R,1,T]
             normalized = normalized.reshape(shape)
 
     if normalized.ndim != values.ndim:
