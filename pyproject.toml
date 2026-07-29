@@ -48,6 +48,9 @@ requires = ["uv_build>=0.11.32,<0.12"]
 build-backend = "uv_build"
 
 [dependency-groups]
+bench = [
+    "asv>=0.6.6",
+]
 dev = [
     "mypy",
     "pytest",

@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Add an opt-in local ASV benchmark suite for reproducible hot-path and
+  implementation-candidate comparisons.
 - Add public `stack` and `concatenate` functions for homogeneous structural
   assembly of `Roll`, `Event`, and `Pool` values.
 - Add fixed structural `select` and per-repetition `lookup` for `Roll`,

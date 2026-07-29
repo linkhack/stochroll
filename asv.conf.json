@@ -1,0 +1,42 @@
+{
+    "version": 1,
+    "project": "stochroll",
+    "project_url": "https://github.com/linkhack/stochroll",
+    "repo": ".",
+    "branches": [
+        "main"
+    ],
+    "benchmark_dir": "benchmarks",
+    "show_commit_url":"https://github.com/linkhack/stochroll/commit/",
+    "env_dir": ".asv/env",
+    "results_dir": ".asv/results",
+    "html_dir": ".asv/html",
+    "environment_type": "uv",
+    "build_command": [
+        "python -m pip wheel --no-deps -w {build_cache_dir} {build_dir}"
+    ],
+    "pythons": [
+        "3.12","3.14"
+    ],
+    "matrix": {
+        "req": {
+            "numpy": [
+                "1.26.4",
+                "2.5.1"
+            ]
+        },
+        "env_nobuild": {
+            "STOCHROLL_BENCH_CONFIG": [
+                "standard"
+            ]
+        }
+    },
+    "exclude": [
+    {
+        "python": "3.14",
+        "req": {
+            "numpy": "1.26.4"
+        }
+    }
+]
+}

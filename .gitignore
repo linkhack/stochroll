@@ -17,3 +17,6 @@ htmlcov/
 
 # Virtual environments
 .venv/
+
+# Local ASV environments, results, and reports
+.asv/
