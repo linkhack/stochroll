@@ -5,7 +5,7 @@ import pytest
 from helpers import FixedRNG
 
 from stochroll import Event, Pool, Roll, Roller
-from stochroll.core import _normalize_axis
+from stochroll.core import _normalize_axis_index, _normalize_axis_tuple
 
 
 def test_repetitions_must_be_positive() -> None:
@@ -233,19 +233,46 @@ def test_empty_axis_reductions_follow_numpy_semantics() -> None:
         (None, None),
     ],
 )
-def test_normalize_axis(
+def test_normalize_axis_tuple(
     axis: int | tuple[int, ...] | None,
     expected: tuple[int, ...] | None,
 ) -> None:
-    assert _normalize_axis(axis, ndim=3) == expected
+    assert _normalize_axis_tuple(axis, ndim=3) == expected
 
 
 @pytest.mark.parametrize("axis", [3, -4, (1, 3)])
-def test_normalize_axis_rejects_out_of_bounds_indices(
+def test_normalize_axis_tuple_rejects_out_of_bounds_indices(
     axis: int | tuple[int, ...],
 ) -> None:
     with pytest.raises(ValueError, match=r"axis .* is out of bounds"):
-        _normalize_axis(axis, ndim=3)
+        _normalize_axis_tuple(axis, ndim=3)
+
+
+@pytest.mark.parametrize(
+    ("axis", "expected"),
+    [
+        (1, 1),
+        (-1, 2),
+    ],
+)
+def test_normalize_axis_index(axis: int, expected: int) -> None:
+    assert _normalize_axis_index(axis, ndim=3) == expected
+
+
+@pytest.mark.parametrize("axis", [3, -4])
+def test_normalize_axis_index_rejects_out_of_bounds_indices(axis: int) -> None:
+    with pytest.raises(ValueError, match=r"axis .* is out of bounds"):
+        _normalize_axis_index(axis, ndim=3)
+
+
+@pytest.mark.parametrize("axis", [True, False])
+def test_axis_normalizers_reject_booleans(axis: bool) -> None:
+    with pytest.raises(TypeError, match="integer, not bool"):
+        _normalize_axis_index(axis, ndim=3)
+    with pytest.raises(TypeError, match="integer, not bool"):
+        _normalize_axis_tuple(axis, ndim=3)
+    with pytest.raises(TypeError, match="integer, not bool"):
+        _normalize_axis_tuple((1, axis), ndim=3)
 
 
 @pytest.mark.parametrize("axis", [0, -2, (1, 0), None])
@@ -257,4 +284,14 @@ def test_shape_reductions_reject_the_repetitions_axis(
 
     for reduction in (roll.sum, roll.mean, roll.min, roll.max, event.count):
         with pytest.raises(ValueError, match="cannot reduce the repetitions axis"):
+            reduction(axis=axis)
+
+
+@pytest.mark.parametrize("axis", [True, False])
+def test_shape_reductions_reject_boolean_axes(axis: bool) -> None:
+    roll = Roll(np.ones((2, 3), dtype=np.int64))
+    event = Event(np.ones((2, 3), dtype=np.bool_))
+
+    for reduction in (roll.sum, roll.mean, roll.min, roll.max, event.count):
+        with pytest.raises(TypeError, match="integer, not bool"):
             reduction(axis=axis)

@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Add public `stack` and `concatenate` functions for homogeneous structural
+  assembly of `Roll`, `Event`, and `Pool` values.
 - Add fixed structural `select` and per-repetition `lookup` for `Roll`,
   `Event`, and structural Pool axes, plus singleton-axis insertion for `Roll`
   and `Event`.
