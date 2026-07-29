@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import cast
+from typing import cast, overload
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -27,6 +28,7 @@ type NumericLike = Roll | NumericScalar
 type InternalValue = Roll | Event | NumericScalar
 type FixedIndices = int | slice | ArrayLike
 type LookupIndices = Roll | ArrayLike
+type AssemblyValue = Roll | Event | Pool
 
 
 # ============================================================
@@ -48,21 +50,27 @@ def _normalize_shape(shape: ShapeLike | None) -> tuple[int, ...]:
     return shape
 
 
-def _normalize_axis(axis: AxisLike, ndim: int) -> tuple[int, ...] | None:
-    if axis is None:
-        return None
+def _normalize_axis_index(axis: int, ndim: int) -> int:
+    if isinstance(axis, bool):
+        raise TypeError("axis must be an integer, not bool")
 
-    axes = (axis,) if isinstance(axis, int) else axis
-    normalized = tuple(i + ndim if i < 0 else i for i in axes)
-
-    if not all(0 <= i < ndim for i in normalized):
+    normalized = axis + ndim if axis < 0 else axis
+    if not 0 <= normalized < ndim:
         raise ValueError(f"axis {axis} is out of bounds for array of dimension {ndim}")
 
     return normalized
 
 
+def _normalize_axis_tuple(axis: AxisLike, ndim: int) -> tuple[int, ...] | None:
+    if axis is None:
+        return None
+
+    axes = (axis,) if isinstance(axis, int) else axis
+    return tuple(_normalize_axis_index(index, ndim) for index in axes)
+
+
 def _normalize_reduction_axis(axis: AxisLike, ndim: int) -> tuple[int, ...]:
-    normalized = _normalize_axis(axis, ndim)
+    normalized = _normalize_axis_tuple(axis, ndim)
     if normalized is None or 0 in normalized:
         raise ValueError("cannot reduce the repetitions axis")
     return normalized
@@ -74,9 +82,7 @@ def _normalize_structural_axis(
     *,
     pool: bool = False,
 ) -> int:
-    normalized = _normalize_axis(axis, ndim)
-    assert normalized is not None
-    selected = normalized[0]
+    selected = _normalize_axis_index(axis, ndim)
 
     if selected == 0:
         raise ValueError("cannot select the repetitions axis")
@@ -194,14 +200,75 @@ def _add_structural_axis[DType: np.generic](
     axis: int,
 ) -> NDArray[DType]:
     output_ndim = values.ndim + 1
-    normalized = axis + output_ndim if axis < 0 else axis
-    if not 0 <= normalized < output_ndim:
-        raise ValueError(
-            f"axis {axis} is out of bounds for array of dimension {output_ndim}"
-        )
+    normalized = _normalize_axis_index(axis, output_ndim)
     if normalized == 0:
         raise ValueError("cannot insert an axis before the repetitions axis")
     return np.expand_dims(values, axis=normalized)
+
+
+def _normalize_assembly_axis(
+    axis: int,
+    ndim: int,
+    *,
+    operation: str,
+) -> int:
+    assembly_axis = _normalize_axis_index(axis, ndim)
+    if assembly_axis == 0:
+        raise ValueError(f"cannot {operation} along the repetitions axis")
+    return assembly_axis
+
+
+def _validate_assembly_values(
+    values: Sequence[AssemblyValue],
+) -> tuple[AssemblyValue, ...]:
+    items = tuple(values)
+    if not items:
+        raise ValueError("values must contain at least one wrapper")
+
+    first_type = type(items[0])
+    if first_type not in (Roll, Event, Pool):
+        raise TypeError("values must contain only Roll, Event, or Pool wrappers")
+    if any(type(item) is not first_type for item in items[1:]):
+        raise TypeError("values must contain homogeneous wrapper types")
+
+    repetitions = items[0].values.shape[0]
+    if any(item.values.shape[0] != repetitions for item in items[1:]):
+        raise ValueError("all values must have matching repetitions")
+
+    ndim = items[0].values.ndim
+    if any(item.values.ndim != ndim for item in items[1:]):
+        raise ValueError("all values must have matching ranks")
+
+    if first_type is Pool:
+        first_pool = cast(Pool, items[0])
+        for item in items[1:]:
+            pool = cast(Pool, item)
+            if pool.values.shape[-1] != first_pool.values.shape[-1]:
+                raise ValueError("all Pools must have matching dice extents")
+            if pool.sides != first_pool.sides:
+                raise ValueError("all Pools must have matching sides")
+            if pool.roller is not first_pool.roller:
+                raise ValueError("all Pools must reference the same Roller")
+
+    return items
+
+
+def _wrap_assembled(
+    values: NDArray[np.generic],
+    *,
+    template: AssemblyValue,
+) -> AssemblyValue:
+    if type(template) is Roll:
+        return Roll(cast(RollArray, values))
+    if type(template) is Event:
+        return Event(cast(EventArray, values))
+
+    pool = cast(Pool, template)
+    return Pool(
+        cast(PoolArray, values),
+        sides=pool.sides,
+        roller=pool.roller,
+    )
 
 
 # ============================================================
@@ -713,7 +780,7 @@ class Roll:
 # ============================================================
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class Event:
     values: EventArray
 
@@ -849,3 +916,122 @@ def where(
     event: Event, yes: Roll | NumericScalar, no: Roll | NumericScalar = 0
 ) -> Roll:
     return Roll(np.where(event.values, _vals(yes), _vals(no)))
+
+
+@overload
+def stack(values: Sequence[Roll], *, axis: int = 1) -> Roll: ...
+
+
+@overload
+def stack(values: Sequence[Event], *, axis: int = 1) -> Event: ...
+
+
+@overload
+def stack(values: Sequence[Pool], *, axis: int = 1) -> Pool: ...
+
+
+def stack(
+    values: Sequence[AssemblyValue],
+    *,
+    axis: int = 1,
+) -> AssemblyValue:
+    """Stack homogeneous wrappers along a new structural axis.
+
+    ``values`` must be a nonempty sequence containing only ``Roll``,
+    ``Event``, or ``Pool`` objects of one wrapper type. Every input must have
+    the same rank, shape, and repetition count; inputs are not broadcast.
+    The result preserves the wrapper type and follows NumPy dtype promotion.
+
+    ``axis`` uses ``numpy.stack`` output-array coordinates, including negative
+    axes. The default ``axis=1`` inserts the new axis immediately after
+    repetitions. Axis 0 is prohibited because repetitions are independent
+    simulation samples. If each input has shape ``(R, *S)``, the result inserts
+    ``len(values)`` at the normalized output axis.
+
+    Pool inputs must additionally have matching ``sides`` and dice extents and
+    reference the same ``Roller`` object. The new axis must be inserted before
+    the final dice axis, which remains unchanged; stacking after the dice axis
+    is prohibited.
+    """
+    items = _validate_assembly_values(values)
+    template = items[0]
+    input_ndim = template.values.ndim
+    stack_axis = _normalize_assembly_axis(
+        axis,
+        input_ndim + 1,
+        operation="stack",
+    )
+
+    if type(template) is Pool and stack_axis == input_ndim:
+        raise ValueError("cannot stack after the Pool dice axis")
+
+    shape = template.values.shape
+    if any(item.values.shape != shape for item in items[1:]):
+        raise ValueError("all values must have matching shapes for stack")
+
+    result = np.stack([item.values for item in items], axis=stack_axis)
+    return _wrap_assembled(result, template=template)
+
+
+@overload
+def concatenate(values: Sequence[Roll], *, axis: int = 1) -> Roll: ...
+
+
+@overload
+def concatenate(values: Sequence[Event], *, axis: int = 1) -> Event: ...
+
+
+@overload
+def concatenate(values: Sequence[Pool], *, axis: int = 1) -> Pool: ...
+
+
+def concatenate(
+    values: Sequence[AssemblyValue],
+    *,
+    axis: int = 1,
+) -> AssemblyValue:
+    """Concatenate homogeneous wrappers along a structural axis.
+
+    ``values`` must be a nonempty sequence containing only ``Roll``,
+    ``Event``, or ``Pool`` objects of one wrapper type. Every input must have
+    the same rank and repetition count. All dimensions except ``axis`` must
+    match exactly; inputs are not broadcast. The result preserves the wrapper
+    type, sums the selected-axis extents, and follows NumPy dtype promotion.
+
+    ``axis`` uses ``numpy.concatenate`` input-array coordinates, including
+    negative axes. The default is the first structural axis, ``axis=1``.
+    Axis 0 is prohibited because repetitions are independent simulation
+    samples.
+
+    Pool inputs must additionally have matching ``sides`` and final dice
+    extents and reference the same ``Roller`` object. Concatenation may target
+    only an existing structural axis; the final dice axis is prohibited. A
+    Pool shaped only ``(R, D)`` therefore has no valid concatenation axis.
+    """
+    items = _validate_assembly_values(values)
+    template = items[0]
+    concatenate_axis = _normalize_assembly_axis(
+        axis,
+        template.values.ndim,
+        operation="concatenate",
+    )
+
+    if type(template) is Pool and concatenate_axis == template.values.ndim - 1:
+        raise ValueError("cannot concatenate along the Pool dice axis")
+
+    expected_shape = template.values.shape
+    for item in items[1:]:
+        for dimension, (actual, expected) in enumerate(
+            zip(item.values.shape, expected_shape, strict=True)
+        ):
+            if dimension != concatenate_axis and actual != expected:
+                raise ValueError(
+                    "all non-concatenated dimensions must match "
+                    f"(dimension {dimension}: {actual} != {expected})"
+                )
+
+    result = np.concatenate(
+        [item.values for item in items],
+        axis=concatenate_axis,
+    )
+    return _wrap_assembled(result, template=template)

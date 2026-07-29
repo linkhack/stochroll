@@ -59,7 +59,7 @@ print(f"P(4+ hits): {hits.indicator().sum().probability_at_least(4):.1%}")
 
 The arrays behind these objects have a leading repetitions axis. `shape=6` adds six structural values to each simulation sample, so the second example evaluates six attacks in parallel. `broadcast_to(...)` can expand a shared value or event to match such a structural shape.
 
-## Structural selection and lookup
+## Structural operations
 
 `select` chooses fixed structural entries, while `lookup` can choose different
 entries in every repetition. Axes use NumPy's absolute numbering: axis 0 is
@@ -68,10 +68,10 @@ must have an integer dtype, and cannot be negative.
 
 The following single example shows fixed selection, one-axis shorthand,
 explicit full-rank lookup across teams, singleton-axis construction, and Pool
-structural selection:
+structural selection and assembly:
 
 ```python
-from stochroll import Roller
+from stochroll import Roller, concatenate, stack
 
 roller = Roller(repetitions=100_000, seed=9)
 
@@ -79,6 +79,11 @@ roller = Roller(repetitions=100_000, seed=9)
 initiative = roller.d(20, shape=4)
 first_player = initiative.select(0)
 random_player = initiative.lookup(roller.d(4) - 1)  # (R,) shorthand -> (R, 1)
+
+# Assemble independent values without exposing the repetitions axis.
+second_party = roller.d(20, shape=4)
+two_parties = stack([initiative, second_party])  # (R, parties=2, players=4)
+all_players = concatenate([initiative, second_party])  # (R, players=8)
 
 # Two structural axes: (repetitions, teams, players).
 defense = roller.d(12, shape=(2, 4)) + 8
@@ -105,6 +110,18 @@ They reject axis `-1`, which is the dedicated dice axis. Use `first()`,
 `last()`, or `single()` to resolve existing Pool dice positions. Lookup indices
 remain caller-managed values; results do not retain hidden index provenance.
 
+`stack` inserts a new structural axis using output-array coordinates, matching
+NumPy; `concatenate` joins an existing structural axis using input-array
+coordinates. Both default to `axis=1`, immediately after repetitions. Inputs
+must use one wrapper type, have matching repetition counts, and have compatible
+shapes without implicit broadcasting. Repetitions cannot be assembled because
+they represent independent simulation samples rather than structural values.
+
+Pool assembly additionally requires matching `sides`, matching dice extents,
+and the same `Roller` object. `stack` may insert only before the final dice
+axis, while `concatenate` may target only an existing structural axis. Neither
+operation combines or resizes the Pool dice axis.
+
 ## Core concepts
 
 | Concept | Purpose |
@@ -113,6 +130,7 @@ remain caller-managed values; results do not retain hidden index provenance.
 | `Pool` | Represents dice that still need a pool operation. It supports structural `select` and `lookup`; use `sum`, `min`, `max`, `first`, `last`, `single`, keep/drop methods, `reroll_once`, or `count_at_least` for dice operations. |
 | `Roll` | Represents a resolved numeric outcome for every repetition. Rolls support arithmetic, comparisons, structural selection and lookup, singleton-axis insertion, broadcasting, reductions, expected values, and threshold probabilities. |
 | `Event` | Represents a boolean condition for every repetition. Events support structural selection and lookup, singleton-axis insertion, `&`, `\|`, `~`, `indicator()`, `count()`, and `probability()`. Pass an event to `where` for conditional selection. |
+| `stack` / `concatenate` | Assemble homogeneous Rolls, Events, or Pools along structural axes without combining repetitions. |
 
 For example, `roller.d(20) >= 15` is an `Event`, while `roller.d(20) + 5` is a `Roll`. Events cannot be used in arithmetic; use `event.indicator()` for a numeric 0/1 score per repetition, `count()` to reduce structural axes, or `where(event, yes, no)` to choose between outcomes.
 

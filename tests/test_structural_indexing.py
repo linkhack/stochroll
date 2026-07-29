@@ -333,3 +333,15 @@ def test_add_axis_rejects_out_of_range_positions(axis: int) -> None:
 
     with pytest.raises(ValueError, match="out of bounds"):
         roll.add_axis(axis=axis)
+
+
+@pytest.mark.parametrize("axis", [True, False])
+def test_structural_operations_reject_boolean_axes(axis: bool) -> None:
+    roll = Roll(np.arange(6, dtype=np.int64).reshape(2, 3))
+
+    with pytest.raises(TypeError, match="integer, not bool"):
+        roll.select(0, axis=axis)
+    with pytest.raises(TypeError, match="integer, not bool"):
+        roll.lookup(np.zeros((2, 1), dtype=np.int64), axis=axis)
+    with pytest.raises(TypeError, match="integer, not bool"):
+        roll.add_axis(axis=axis)
