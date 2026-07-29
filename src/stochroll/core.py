@@ -25,7 +25,8 @@ from ._typing import (
 )
 
 type NumericLike = Roll | NumericScalar
-type InternalValue = Roll | Event | NumericScalar
+type ElementwiseWrapper = Roll | Event
+type ElementwiseOperand = ElementwiseWrapper | NumericScalar
 type FixedIndices = int | slice | ArrayLike
 type LookupIndices = Roll | ArrayLike
 type AssemblyValue = Roll | Event | Pool
@@ -34,12 +35,48 @@ type AssemblyValue = Roll | Event | Pool
 # ============================================================
 # Helpers
 # ============================================================
-def _vals(x: InternalValue) -> RollArray | NumericScalar:
-    if isinstance(x, Event):
+@overload
+def _validated_operand_values(
+    left: Roll,
+    right: Roll | NumericScalar,
+) -> RollArray | NumericScalar: ...
+
+
+@overload
+def _validated_operand_values(
+    left: Event,
+    right: Event,
+) -> EventArray: ...
+
+
+@overload
+def _validated_operand_values(
+    left: Event,
+    right: Roll | NumericScalar,
+) -> RollArray | NumericScalar: ...
+
+
+def _validated_operand_values(
+    left: ElementwiseWrapper,
+    right: ElementwiseOperand,
+) -> RollArray | EventArray | NumericScalar:
+    if isinstance(left, Roll) and isinstance(right, Event):
         raise TypeError(
             "Event cannot be combined arithmetically with Roll; use .count() first"
         )
-    return x.values if isinstance(x, Roll) else x
+
+    if not isinstance(right, (Roll, Event)):
+        return right
+
+    if left.values.shape[0] != right.values.shape[0]:
+        raise ValueError("elementwise operands must have matching repetitions")
+    if left.values.ndim != right.values.ndim:
+        raise ValueError(
+            "Opperand ranks must match; use add_axis() to express "
+            "structural broadcasting explicitly"
+        )
+
+    return right.values
 
 
 def _normalize_shape(shape: ShapeLike | None) -> tuple[int, ...]:
@@ -582,41 +619,41 @@ class Roll:
     # DSL
     # ------------------------------------------------------------
     def __add__(self, other: Roll | NumericScalar) -> Roll:
-        return Roll(self.values + _vals(other))
+        return Roll(self.values + _validated_operand_values(self, other))
 
     def __radd__(self, other: NumericScalar) -> Roll:
-        return Roll(_vals(other) + self.values)
+        return self + other
 
     def __sub__(self, other: Roll | NumericScalar) -> Roll:
-        return Roll(self.values - _vals(other))
+        return Roll(self.values - _validated_operand_values(self, other))
 
     def __rsub__(self, other: NumericScalar) -> Roll:
-        return Roll(_vals(other) - self.values)
+        return Roll(_validated_operand_values(self, other) - self.values)
 
     def __mul__(self, other: Roll | NumericScalar) -> Roll:
-        return Roll(self.values * _vals(other))
+        return Roll(self.values * _validated_operand_values(self, other))
 
     def __rmul__(self, other: NumericScalar) -> Roll:
-        return Roll(_vals(other) * self.values)
+        return self * other
 
     # Comparisons intentionally return Event for the vectorized dice DSL.
     def __eq__(self, other: Roll | NumericScalar) -> Event:  # type: ignore[override]
-        return Event(self.values == _vals(other))
+        return Event(self.values == _validated_operand_values(self, other))
 
     def __ne__(self, other: NumericLike) -> Event:  # type: ignore[override]
-        return Event(self.values != _vals(other))
+        return Event(self.values != _validated_operand_values(self, other))
 
     def __le__(self, other: Roll | NumericScalar) -> Event:
-        return Event(self.values <= _vals(other))
+        return Event(self.values <= _validated_operand_values(self, other))
 
     def __lt__(self, other: Roll | NumericScalar) -> Event:
-        return Event(self.values < _vals(other))
+        return Event(self.values < _validated_operand_values(self, other))
 
     def __ge__(self, other: Roll | NumericScalar) -> Event:
-        return Event(self.values >= _vals(other))
+        return Event(self.values >= _validated_operand_values(self, other))
 
     def __gt__(self, other: Roll | NumericScalar) -> Event:
-        return Event(self.values > _vals(other))
+        return Event(self.values > _validated_operand_values(self, other))
 
     # ------------------------------------------------------------
     # Structural indexing
@@ -792,10 +829,14 @@ class Event:
             raise ValueError("repetitions must be >= 1")
 
     def __or__(self, other: Event) -> Event:
-        return Event(self.values | other.values)
+        if not isinstance(other, Event):
+            raise TypeError("Event boolean operations require another Event")
+        return Event(self.values | _validated_operand_values(self, other))
 
     def __and__(self, other: Event) -> Event:
-        return Event(self.values & other.values)
+        if not isinstance(other, Event):
+            raise TypeError("Event boolean operations require another Event")
+        return Event(self.values & _validated_operand_values(self, other))
 
     def __invert__(self) -> Event:
         return Event(~self.values)
@@ -915,7 +956,13 @@ class Event:
 def where(
     event: Event, yes: Roll | NumericScalar, no: Roll | NumericScalar = 0
 ) -> Roll:
-    return Roll(np.where(event.values, _vals(yes), _vals(no)))
+    return Roll(
+        np.where(
+            event.values,
+            _validated_operand_values(event, yes),
+            _validated_operand_values(event, no),
+        )
+    )
 
 
 @overload
