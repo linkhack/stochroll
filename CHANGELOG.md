@@ -1,5 +1,8 @@
 ## Unreleased
 
+- Add fixed structural `select` and per-repetition `lookup` for `Roll`,
+  `Event`, and structural Pool axes, plus singleton-axis insertion for `Roll`
+  and `Event`.
 - Add `Event.indicator()` for shape-preserving numeric 0/1 conversion.
 - Type Roll and Event statistical summaries as `NDArray[np.float64]` while
   preserving NumPy's scalar runtime results for scalar-valued simulations.

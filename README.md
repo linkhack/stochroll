@@ -59,14 +59,60 @@ print(f"P(4+ hits): {hits.indicator().sum().probability_at_least(4):.1%}")
 
 The arrays behind these objects have a leading repetitions axis. `shape=6` adds six structural values to each simulation sample, so the second example evaluates six attacks in parallel. `broadcast_to(...)` can expand a shared value or event to match such a structural shape.
 
+## Structural selection and lookup
+
+`select` chooses fixed structural entries, while `lookup` can choose different
+entries in every repetition. Axes use NumPy's absolute numbering: axis 0 is
+always repetitions and cannot be selected. Explicit indices are zero-based,
+must have an integer dtype, and cannot be negative.
+
+The following single example shows fixed selection, one-axis shorthand,
+explicit full-rank lookup across teams, singleton-axis construction, and Pool
+structural selection:
+
+```python
+from stochroll import Roller
+
+roller = Roller(repetitions=100_000, seed=9)
+
+# One structural axis: (repetitions, players).
+initiative = roller.d(20, shape=4)
+first_player = initiative.select(0)
+random_player = initiative.lookup(roller.d(4) - 1)  # (R,) shorthand -> (R, 1)
+
+# Two structural axes: (repetitions, teams, players).
+defense = roller.d(12, shape=(2, 4)) + 8
+targets = roller.d(4, shape=2) - 1  # (R, teams)
+target_defense = defense.lookup(targets.add_axis(), axis=-1)
+# targets.add_axis() is (R, teams, 1), making the full-rank lookup explicit.
+
+# Pool lookup/select operates only on structural axes and retains the dice axis.
+team_pools = roller.pool(3, d=6, shape=2)  # (R, teams, dice)
+first_team_pool = team_pools.select(0)  # (R, dice), still a Pool
+```
+
+For `Roll` and `Event`, scalar selection removes the selected axis; slices and
+integer arrays replace it with their index shape. `lookup` normally requires
+indices with the same rank as the source. Non-selected dimensions may be
+singleton to broadcast or must match the source. The narrow `(R,)` and
+`(R, K)` shorthand is available only when the source has exactly one
+structural axis; multi-axis sources must make all dimensions explicit.
+`Roll.add_axis()` and `Event.add_axis()` insert a singleton structural axis
+without drawing new random values.
+
+`Pool.select` and `Pool.lookup` default to axis `-2`, the last structural axis.
+They reject axis `-1`, which is the dedicated dice axis. Use `first()`,
+`last()`, or `single()` to resolve existing Pool dice positions. Lookup indices
+remain caller-managed values; results do not retain hidden index provenance.
+
 ## Core concepts
 
 | Concept | Purpose |
 | --- | --- |
 | `Roller` | Owns the random generator and creates simulations. `d(sides)` creates resolved die rolls; `pool(dice, d=sides)` creates unresolved dice pools. |
-| `Pool` | Represents dice that still need a pool operation. Use `sum`, `min`, `max`, `keep_highest`, `keep_lowest`, `drop_lowest`, `drop_highest`, `drop_lowest_sum`, `reroll_once`, or `count_at_least`. |
-| `Roll` | Represents a resolved numeric outcome for every repetition. Rolls support arithmetic, comparisons, broadcasting, reductions, expected values, and threshold probabilities. |
-| `Event` | Represents a boolean condition for every repetition. Events support `&`, `\|`, `~`, `indicator()`, `count()`, and `probability()`. Pass an event to `where` for conditional selection. |
+| `Pool` | Represents dice that still need a pool operation. It supports structural `select` and `lookup`; use `sum`, `min`, `max`, `first`, `last`, `single`, keep/drop methods, `reroll_once`, or `count_at_least` for dice operations. |
+| `Roll` | Represents a resolved numeric outcome for every repetition. Rolls support arithmetic, comparisons, structural selection and lookup, singleton-axis insertion, broadcasting, reductions, expected values, and threshold probabilities. |
+| `Event` | Represents a boolean condition for every repetition. Events support structural selection and lookup, singleton-axis insertion, `&`, `\|`, `~`, `indicator()`, `count()`, and `probability()`. Pass an event to `where` for conditional selection. |
 
 For example, `roller.d(20) >= 15` is an `Event`, while `roller.d(20) + 5` is a `Roll`. Events cannot be used in arithmetic; use `event.indicator()` for a numeric 0/1 score per repetition, `count()` to reduce structural axes, or `where(event, yes, no)` to choose between outcomes.
 
