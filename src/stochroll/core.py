@@ -16,6 +16,7 @@ from ._reductions import (
 from ._typing import (
     AxisLike,
     EventArray,
+    IntegerArray,
     NumericScalar,
     PoolArray,
     RollArray,
@@ -24,6 +25,8 @@ from ._typing import (
 
 type NumericLike = Roll | NumericScalar
 type InternalValue = Roll | Event | NumericScalar
+type FixedIndices = int | slice | ArrayLike
+type LookupIndices = Roll | ArrayLike
 
 
 # ============================================================
@@ -63,6 +66,142 @@ def _normalize_reduction_axis(axis: AxisLike, ndim: int) -> tuple[int, ...]:
     if normalized is None or 0 in normalized:
         raise ValueError("cannot reduce the repetitions axis")
     return normalized
+
+
+def _normalize_structural_axis(
+    axis: int,
+    ndim: int,
+    *,
+    pool: bool = False,
+) -> int:
+    normalized = _normalize_axis(axis, ndim)
+    assert normalized is not None
+    selected = normalized[0]
+
+    if selected == 0:
+        raise ValueError("cannot select the repetitions axis")
+    if pool and selected == ndim - 1:
+        raise ValueError("cannot select the Pool dice axis")
+
+    return selected
+
+
+def _integer_indices(indices: ArrayLike) -> IntegerArray:
+    values = np.asarray(indices)
+    if not np.issubdtype(values.dtype, np.integer):
+        raise TypeError("indices must have an integer dtype")
+    return cast(IntegerArray, values)
+
+
+def _validate_index_bounds(
+    indices: IntegerArray,
+    *,
+    axis: int,
+    size: int,
+) -> None:
+    if np.any(indices < 0):
+        raise IndexError("indices must be non-negative")
+    if np.any(indices >= size):
+        raise IndexError(f"index out of bounds for axis {axis} with size {size}")
+
+
+def _select_values[DType: np.generic](
+    values: NDArray[DType],
+    indices: FixedIndices,
+    *,
+    axis: int,
+) -> NDArray[DType]:
+    if isinstance(indices, slice):
+        selection = (slice(None),) * axis + (indices,)
+        return values[selection]
+
+    integer_indices = _integer_indices(indices)
+    _validate_index_bounds(integer_indices, axis=axis, size=values.shape[axis])
+    return np.take(values, integer_indices, axis=axis)
+
+
+def _normalize_lookup_indices[DType: np.generic](
+    values: NDArray[DType],
+    indices: LookupIndices,
+    *,
+    axis: int,
+    structural_ndim: int,
+) -> IntegerArray:
+    raw_indices = indices.values if isinstance(indices, Roll) else indices
+    normalized = _integer_indices(raw_indices)
+
+    if normalized.ndim != values.ndim:
+        if structural_ndim != 1 or normalized.ndim not in (1, 2):
+            raise ValueError(
+                "lookup indices must have the same rank as the source; "
+                "shorthand is only supported for one structural axis"
+            )
+
+        repetitions = normalized.shape[0]
+        if normalized.ndim == 1:
+            shape = [1] * values.ndim
+            shape[0] = repetitions
+            normalized = normalized.reshape(shape)
+        else:
+            lookup_size = normalized.shape[1]
+            shape = [1] * values.ndim  # [1,1,1]
+            shape[0] = repetitions  # [R,1,1]
+            shape[axis] = lookup_size  # [R,T,1] or [R,1,T]
+            normalized = normalized.reshape(shape)
+
+    if normalized.ndim != values.ndim:
+        raise ValueError("lookup indices must have the same rank as the source")
+
+    repetitions = normalized.shape[0]
+    if repetitions not in (1, values.shape[0]):
+        raise ValueError(
+            "lookup indices repetitions dimension must be 1 or match the source"
+        )
+
+    for dimension, (index_size, source_size) in enumerate(
+        zip(normalized.shape, values.shape, strict=True)
+    ):
+        if dimension in (0, axis):
+            continue
+        if index_size not in (1, source_size):
+            raise ValueError(
+                "lookup index dimensions must be 1 or match the source "
+                f"(dimension {dimension}: {index_size} not in (1, {source_size}))"
+            )
+
+    _validate_index_bounds(normalized, axis=axis, size=values.shape[axis])
+    return normalized
+
+
+def _lookup_values[DType: np.generic](
+    values: NDArray[DType],
+    indices: LookupIndices,
+    *,
+    axis: int,
+    structural_ndim: int,
+) -> NDArray[DType]:
+    normalized = _normalize_lookup_indices(
+        values,
+        indices,
+        axis=axis,
+        structural_ndim=structural_ndim,
+    )
+    return np.take_along_axis(values, normalized, axis=axis)
+
+
+def _add_structural_axis[DType: np.generic](
+    values: NDArray[DType],
+    axis: int,
+) -> NDArray[DType]:
+    output_ndim = values.ndim + 1
+    normalized = axis + output_ndim if axis < 0 else axis
+    if not 0 <= normalized < output_ndim:
+        raise ValueError(
+            f"axis {axis} is out of bounds for array of dimension {output_ndim}"
+        )
+    if normalized == 0:
+        raise ValueError("cannot insert an axis before the repetitions axis")
+    return np.expand_dims(values, axis=normalized)
 
 
 # ============================================================
@@ -174,6 +313,59 @@ class Pool:
             raise ValueError("Pool must contain at least one die")
         if self.sides < 1:
             raise ValueError("sides must be >= 1")
+
+    def select(self, indices: FixedIndices, *, axis: int = -2) -> Pool:
+        """Select fixed entries from a structural axis.
+
+        ``indices`` may be a non-negative integer, a slice, or an integer
+        array-like. A scalar integer removes the selected axis; a slice or
+        array replaces it with the index shape, following ``numpy.take``
+        semantics. Negative explicit indices and out-of-bounds values raise
+        ``IndexError``; slices retain ordinary NumPy normalization.
+
+        Axes use absolute NumPy numbering, including negative axes. The
+        default ``-2`` is the last structural axis. Axis 0 (repetitions) and
+        the final Pool dice axis are prohibited. The result remains a Pool
+        with the same ``sides`` and ``roller``.
+        """
+        selected_axis = _normalize_structural_axis(
+            axis,
+            self.values.ndim,
+            pool=True,
+        )
+        values = _select_values(self.values, indices, axis=selected_axis)
+        return Pool(values, sides=self.sides, roller=self.roller)
+
+    def lookup(self, indices: LookupIndices, *, axis: int = -2) -> Pool:
+        """Look up structural entries using resolved per-repetition indices.
+
+        ``indices`` may be a Roll or a raw integer array-like. Integer dtypes
+        are required; values must be non-negative and in bounds. Canonical
+        indices have the same rank as the Pool, with dimension 0 equal to the
+        repetition count or 1, the lookup axis holding the result extent, and
+        every other dimension equal to the source extent or 1.
+
+        For a Pool with exactly one structural axis, ``(R,)`` and ``(R, K)``
+        (including a leading singleton repetition dimension) are accepted as
+        shorthand. Pools with multiple structural axes require full-rank
+        indices with explicit singleton dimensions. Axis 0 and the final dice
+        axis are prohibited; the default ``-2`` selects the last structural
+        axis. The output is a Pool whose broadcast lookup shape retains the
+        final dice axis and the original ``sides`` and ``roller``. Indices are
+        not stored as provenance.
+        """
+        selected_axis = _normalize_structural_axis(
+            axis,
+            self.values.ndim,
+            pool=True,
+        )
+        values = _lookup_values(
+            self.values,
+            indices,
+            axis=selected_axis,
+            structural_ndim=self.values.ndim - 2,
+        )
+        return Pool(values, sides=self.sides, roller=self.roller)
 
     def first(self) -> Roll:
         return Roll(self.values[..., 0])
@@ -360,6 +552,61 @@ class Roll:
         return Event(self.values > _vals(other))
 
     # ------------------------------------------------------------
+    # Structural indexing
+    # ------------------------------------------------------------
+    def select(self, indices: FixedIndices, *, axis: int = -1) -> Roll:
+        """Select fixed entries from a structural axis.
+
+        ``indices`` may be a non-negative integer, a slice, or an integer
+        array-like. A scalar integer removes the selected axis; a slice or
+        array replaces it with the index shape, following ``numpy.take``
+        semantics. Negative explicit indices and out-of-bounds values raise
+        ``IndexError``; slices retain ordinary NumPy normalization.
+
+        Axes use absolute NumPy numbering, including negative axes. Axis 0 is
+        the protected repetitions axis and cannot be selected. The default is
+        the final structural axis, and the result is a Roll.
+        """
+        selected_axis = _normalize_structural_axis(axis, self.values.ndim)
+        return Roll(_select_values(self.values, indices, axis=selected_axis))
+
+    def lookup(self, indices: LookupIndices, *, axis: int = -1) -> Roll:
+        """Look up structural entries using resolved per-repetition indices.
+
+        ``indices`` may be a Roll or a raw integer array-like. Integer dtypes
+        are required; values must be non-negative and in bounds. Canonical
+        indices have the same rank as this Roll, with dimension 0 equal to the
+        repetition count or 1, the lookup axis holding the result extent, and
+        every other dimension equal to the source extent or 1.
+
+        For a Roll with exactly one structural axis, ``(R,)`` and ``(R, K)``
+        (including a leading singleton repetition dimension) are accepted as
+        shorthand. Rolls with multiple structural axes require full-rank
+        indices with explicit singleton dimensions. Axis 0 is prohibited.
+        The output is a Roll with the broadcast normalized index shape;
+        indices are not stored as provenance.
+        """
+        selected_axis = _normalize_structural_axis(axis, self.values.ndim)
+        return Roll(
+            _lookup_values(
+                self.values,
+                indices,
+                axis=selected_axis,
+                structural_ndim=self.values.ndim - 1,
+            )
+        )
+
+    def add_axis(self, axis: int = -1) -> Roll:
+        """Insert a singleton structural axis without creating new values.
+
+        ``axis`` uses NumPy insertion-axis coordinates, including negative
+        axes. Position 0, before the protected repetitions axis, is rejected.
+        The default ``-1`` appends a trailing structural axis. The result is a
+        Roll with one additional length-one dimension.
+        """
+        return Roll(_add_structural_axis(self.values, axis))
+
+    # ------------------------------------------------------------
     # Shape reductions
     # ------------------------------------------------------------
     def sum(self, axis: AxisLike = -1) -> Roll:
@@ -485,6 +732,58 @@ class Event:
 
     def __invert__(self) -> Event:
         return Event(~self.values)
+
+    def select(self, indices: FixedIndices, *, axis: int = -1) -> Event:
+        """Select fixed entries from a structural axis.
+
+        ``indices`` may be a non-negative integer, a slice, or an integer
+        array-like. A scalar integer removes the selected axis; a slice or
+        array replaces it with the index shape, following ``numpy.take``
+        semantics. Negative explicit indices and out-of-bounds values raise
+        ``IndexError``; slices retain ordinary NumPy normalization.
+
+        Axes use absolute NumPy numbering, including negative axes. Axis 0 is
+        the protected repetitions axis and cannot be selected. The default is
+        the final structural axis, and the result is an Event.
+        """
+        selected_axis = _normalize_structural_axis(axis, self.values.ndim)
+        return Event(_select_values(self.values, indices, axis=selected_axis))
+
+    def lookup(self, indices: LookupIndices, *, axis: int = -1) -> Event:
+        """Look up structural entries using resolved per-repetition indices.
+
+        ``indices`` may be a Roll or a raw integer array-like. Integer dtypes
+        are required; values must be non-negative and in bounds. Canonical
+        indices have the same rank as this Event, with dimension 0 equal to
+        the repetition count or 1, the lookup axis holding the result extent,
+        and every other dimension equal to the source extent or 1.
+
+        For an Event with exactly one structural axis, ``(R,)`` and ``(R, K)``
+        (including a leading singleton repetition dimension) are accepted as
+        shorthand. Events with multiple structural axes require full-rank
+        indices with explicit singleton dimensions. Axis 0 is prohibited.
+        The output is an Event with the broadcast normalized index shape;
+        indices are not stored as provenance.
+        """
+        selected_axis = _normalize_structural_axis(axis, self.values.ndim)
+        return Event(
+            _lookup_values(
+                self.values,
+                indices,
+                axis=selected_axis,
+                structural_ndim=self.values.ndim - 1,
+            )
+        )
+
+    def add_axis(self, axis: int = -1) -> Event:
+        """Insert a singleton structural axis without creating new values.
+
+        ``axis`` uses NumPy insertion-axis coordinates, including negative
+        axes. Position 0, before the protected repetitions axis, is rejected.
+        The default ``-1`` appends a trailing structural axis. The result is
+        an Event with one additional length-one dimension.
+        """
+        return Event(_add_structural_axis(self.values, axis))
 
     def broadcast_to(self, *shape: int) -> Event:
         """
