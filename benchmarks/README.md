@@ -79,6 +79,18 @@ The layer compares:
 - `_reduce_max_last_axis` with `numpy.max`;
 - `Pool.drop_lowest_sum` with its straightforward NumPy composition.
 
+Routing candidates are measured separately in `routing.py`. The indexed
+candidate uses duplicate-safe indexed accumulation, while the mask candidate
+is a straightforward label-mask reference. Both receive arrays prepared by
+the same public validation/canonicalization path. Correctness is tested in
+`tests/test_routing.py`; benchmark execution only measures candidates.
+
+Run the focused routing cases with:
+
+```bash
+uv run --group bench asv run --quick --bench 'routing\.'
+```
+
 It also measures `Pool.sum` immediately below and above a `uint8`-to-`uint16`
 output-dtype boundary. Add other dtypes only when they select different
 StochRoll code, not merely for coverage.

@@ -19,6 +19,7 @@ from benchmarks._support import (
     build_pool_lookup_indices,
     build_roll,
     build_roll_lookup_indices,
+    build_route_destinations,
     make_roller,
 )
 from stochroll import Event, Pool, Roll, Roller, concatenate, stack, where
@@ -158,6 +159,30 @@ class EventMethods:
 
     def time_probability(self, workload: WorkloadSpec) -> None:
         self.left.probability()
+
+
+class RoutingMethods:
+    """Measure the public routing methods with the active backend."""
+
+    params: ClassVar = [STANDARD_WORKLOADS]
+    param_names: ClassVar = ["workload"]
+
+    def setup(self, workload: WorkloadSpec) -> None:
+        self.roll = build_roll(workload)
+        self.event = build_event(workload)
+        self.destinations = build_route_destinations(workload)
+
+    def time_route_sum(self, workload: WorkloadSpec) -> None:
+        self.roll.route_sum(self.destinations, size=6)
+
+    def time_route_multipy(self, workload: WorkloadSpec) -> None:
+        self.roll.route_multiply(self.destinations, size=6)
+
+    def time_route_any(self, workload: WorkloadSpec) -> None:
+        self.event.route_any(self.destinations, size=6)
+
+    def time_route_all(self, workload: WorkloadSpec) -> None:
+        self.event.route_all(self.destinations, size=6)
 
 
 class PoolMethods:

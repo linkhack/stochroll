@@ -4,6 +4,8 @@
   implementation-candidate comparisons.
 - Add public `stack` and `concatenate` functions for homogeneous structural
   assembly of `Roll`, `Event`, and `Pool` values.
+- Add `Roll.route_sum` and `Event.route_any` for duplicate-safe destination
+  routing with explicit shape, axis, dtype, and validation semantics.
 - Add fixed structural `select` and per-repetition `lookup` for `Roll`,
   `Event`, and structural Pool axes, plus singleton-axis insertion for `Roll`
   and `Event`.

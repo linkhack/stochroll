@@ -3,9 +3,11 @@ from numpy.typing import NDArray
 
 from stochroll import Roller, where
 
+REPETITIONS = 1_000_000
 
-def adv_guidance() -> NDArray[np.float64]:
-    r = Roller(repetitions=1_000_000)
+
+def calc(repetitions: int = REPETITIONS) -> NDArray[np.float64]:
+    r = Roller(repetitions=repetitions)
 
     # -------------------------
     # Enemy setup
@@ -70,3 +72,15 @@ def adv_guidance() -> NDArray[np.float64]:
 
     total_effective_damage = hp_damage + splash_damage
     return total_effective_damage.expected()
+
+
+def print_results(result: NDArray[np.float64]) -> None:
+    print(f"Expected effective damage: {result}")
+
+
+def adv_guidance() -> NDArray[np.float64]:
+    return calc()
+
+
+if __name__ == "__main__":
+    print_results(calc())

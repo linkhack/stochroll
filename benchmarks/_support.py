@@ -75,6 +75,19 @@ def build_roll_lookup_indices(workload: WorkloadSpec) -> Roll:
 
 
 @lru_cache(maxsize=None, typed=True)
+def build_route_destinations(workload: WorkloadSpec) -> NDArray[np.int16]:
+    """Build full-rank zero-based route destinations shaped ``(R, 6)``."""
+    destinations = (
+        make_roller(workload, seed=SEED + 2).d(
+            6,
+            shape=STRUCTURAL_SHAPE,
+        )
+        - 1
+    )
+    return destinations.values.astype(np.int16, copy=False)
+
+
+@lru_cache(maxsize=None, typed=True)
 def build_pool_lookup_indices(
     workload: WorkloadSpec,
 ) -> NDArray[np.int16]:

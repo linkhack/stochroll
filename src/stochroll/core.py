@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import operator
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import cast, overload
@@ -14,6 +15,10 @@ from ._reductions import (
     _reduce_sum_last_axis,
     _signed_dtype_for_unsigned,
 )
+from ._routing import _route_all_indexed as _route_all_backend
+from ._routing import _route_any_indexed as _route_any_backend
+from ._routing import _route_multiply_indexed as _route_multiply_backend
+from ._routing import _route_sum_indexed as _route_sum_backend
 from ._typing import (
     AxisLike,
     EventArray,
@@ -230,6 +235,103 @@ def _lookup_values[DType: np.generic](
         structural_ndim=structural_ndim,
     )
     return np.take_along_axis(values, normalized, axis=axis)
+
+
+def _normalize_route_size(size: int) -> int:
+    if isinstance(size, (bool, np.bool_)):
+        raise TypeError("size must be an integer, not bool")
+
+    try:
+        normalized = operator.index(size)
+    except TypeError:
+        raise TypeError("size must be an integer") from None
+
+    if normalized <= 0:
+        raise ValueError(f"size must be positive, got {normalized}")
+
+    return normalized
+
+
+def _prepare_route_inputs[DType: np.generic](
+    values: NDArray[DType],
+    destinations: LookupIndices,
+    *,
+    size: int,
+    axis: int,
+) -> tuple[NDArray[DType], IntegerArray, int, int]:
+    """Validate and canonicalize route inputs before backend dispatch."""
+    normalized_size = _normalize_route_size(size)
+    raw_destinations = (
+        destinations.values if isinstance(destinations, Roll) else destinations
+    )
+    integer_destinations = _integer_indices(raw_destinations)
+
+    if values.ndim == 1:
+        normalized_axis = _normalize_axis_index(axis, values.ndim + 1)
+        if normalized_axis == 0:
+            raise ValueError("cannot route along the repetitions axis")
+        if integer_destinations.shape != values.shape:
+            raise ValueError(
+                "scalar route destinations must have the same shape as the source"
+            )
+
+        _validate_index_bounds(
+            integer_destinations,
+            axis=normalized_axis,
+            size=normalized_size,
+        )
+        canonical_values = np.expand_dims(values, axis=1)
+        canonical_destinations = np.expand_dims(integer_destinations, axis=1)
+        return (
+            canonical_values,
+            canonical_destinations,
+            normalized_axis,
+            normalized_size,
+        )
+
+    normalized_axis = _normalize_structural_axis(axis, values.ndim)
+    if integer_destinations.ndim != values.ndim:
+        raise ValueError(
+            "route destinations must have the same rank as the source; "
+            "lower-rank broadcasting is not supported"
+        )
+
+    repetitions = integer_destinations.shape[0]
+    if repetitions not in (1, values.shape[0]):
+        raise ValueError(
+            "route destinations repetitions dimension must be 1 or match the source"
+        )
+
+    for dimension, (destination_size, source_size) in enumerate(
+        zip(integer_destinations.shape, values.shape, strict=True)
+    ):
+        if dimension == 0:
+            continue
+        if source_size == 0:
+            if destination_size != 0:
+                raise ValueError(
+                    "route destination dimensions must be zero when the "
+                    "corresponding source dimension is zero"
+                )
+        elif destination_size not in (1, source_size):
+            raise ValueError(
+                "route destination dimensions must be 1 or match the source "
+                f"(dimension {dimension}: {destination_size} not in "
+                f"(1, {source_size}))"
+            )
+
+    _validate_index_bounds(
+        integer_destinations,
+        axis=normalized_axis,
+        size=normalized_size,
+    )
+    broadcasted_destinations = np.broadcast_to(integer_destinations, values.shape)
+    return (
+        values,
+        broadcasted_destinations,
+        normalized_axis,
+        normalized_size,
+    )
 
 
 def _add_structural_axis[DType: np.generic](
@@ -710,6 +812,97 @@ class Roll:
         """
         return Roll(_add_structural_axis(self.values, axis))
 
+    def route_sum(
+        self,
+        destinations: LookupIndices,
+        *,
+        size: int,
+        axis: int = -1,
+    ) -> Roll:
+        """Route numeric values to destinations and sum collisions.
+
+        ``destinations`` is a resolved ``Roll`` or an integer array-like of
+        zero-based, non-negative destination indices. ``size`` is keyword-only
+        and must be a strictly positive integer. Axes use absolute NumPy
+        numbering and axis 0, the repetitions axis, is rejected. For shaped
+        values, the selected structural axis is replaced by ``size``. For a
+        source shaped ``(R,)``, destinations must also be ``(R,)`` and the
+        destination axis is inserted after repetitions, producing ``(R, size)``;
+        ``axis=1`` and ``axis=-1`` are equivalent in that case.
+
+        Shaped destinations must have the same rank as the source. Their
+        repetition dimension may be ``R`` or ``1`` and their structural
+        dimensions may be ``1`` or the corresponding source extent. Singleton
+        dimensions are explicit; lower-rank broadcasting is rejected, and
+        zero-length source dimensions require matching zero-length
+        destination dimensions. Invalid dtypes, bounds, shapes, axes, and
+        sizes are rejected before accumulation.
+
+        Duplicate destinations are summed, never overwritten. The result is a
+        ``Roll`` using the same accumulation dtype convention as ``sum``:
+        integer inputs accumulate to ``int64`` and floating inputs to
+        ``float64``. Empty source write axes produce zero-filled output with
+        the selected positive destination size. Inputs are not mutated.
+
+        Pool routing and overwrite policies are not supported. The active
+        routing backend is intentionally kept behind the validated public
+        method boundary so implementations can be exchanged for local
+        correctness and performance experiments without changing these
+        semantics.
+        """
+        values, normalized_destinations, normalized_axis, normalized_size = (
+            _prepare_route_inputs(
+                self.values,
+                destinations,
+                size=size,
+                axis=axis,
+            )
+        )
+        dtype = _default_sum_dtype(self.values.dtype)
+        return Roll(
+            _route_sum_backend(
+                values,
+                normalized_destinations,
+                size=normalized_size,
+                axis=normalized_axis,
+                dtype=dtype,
+            )
+        )
+
+    def route_multiply(
+        self,
+        destinations: LookupIndices,
+        *,
+        size: int,
+        axis: int = -1,
+    ) -> Roll:
+        """Route numeric values to destinations and multiply collisions.
+
+        Routing uses the same destination, shape, axis, and validation rules
+        as :meth:`route_sum`. Duplicate destinations are multiplied together;
+        destination slots with no source values retain the multiplicative
+        identity of one. Numeric outputs use the same accumulation dtype
+        convention as :meth:`sum`.
+        """
+        values, normalized_destinations, normalized_axis, normalized_size = (
+            _prepare_route_inputs(
+                self.values,
+                destinations,
+                size=size,
+                axis=axis,
+            )
+        )
+        dtype = _default_sum_dtype(self.values.dtype)
+        return Roll(
+            _route_multiply_backend(
+                values,
+                normalized_destinations,
+                size=normalized_size,
+                axis=normalized_axis,
+                dtype=dtype,
+            )
+        )
+
     # ------------------------------------------------------------
     # Shape reductions
     # ------------------------------------------------------------
@@ -892,6 +1085,91 @@ class Event:
         an Event with one additional length-one dimension.
         """
         return Event(_add_structural_axis(self.values, axis))
+
+    def route_any(
+        self,
+        destinations: LookupIndices,
+        *,
+        size: int,
+        axis: int = -1,
+    ) -> Event:
+        """Route Boolean values to destinations and combine collisions with OR.
+
+        ``destinations`` is a resolved ``Roll`` or an integer array-like of
+        zero-based, non-negative destination indices. ``size`` is keyword-only
+        and must be a strictly positive integer. Axes use absolute NumPy
+        numbering and axis 0, the repetitions axis, is rejected. For shaped
+        values, the selected structural axis is replaced by ``size``. For a
+        source shaped ``(R,)``, destinations must also be ``(R,)`` and the
+        destination axis is inserted after repetitions, producing ``(R, size)``;
+        ``axis=1`` and ``axis=-1`` are equivalent in that case.
+
+        Shaped destinations must have the same rank as the source. Their
+        repetition dimension may be ``R`` or ``1`` and their structural
+        dimensions may be ``1`` or the corresponding source extent. Singleton
+        dimensions are explicit; lower-rank broadcasting is rejected, and
+        zero-length source dimensions require matching zero-length
+        destination dimensions. Invalid dtypes, bounds, shapes, axes, and
+        sizes are rejected before accumulation.
+
+        Duplicate destinations are combined with logical OR, never
+        overwritten. The result is an ``Event`` with Boolean data. Empty
+        source write axes produce ``False``-filled output with the selected
+        positive destination size. Inputs are not mutated.
+
+        Pool routing and overwrite policies are not supported. The active
+        routing backend is intentionally kept behind the validated public
+        method boundary so implementations can be exchanged for local
+        correctness and performance experiments without changing these
+        semantics.
+        """
+        values, normalized_destinations, normalized_axis, normalized_size = (
+            _prepare_route_inputs(
+                self.values,
+                destinations,
+                size=size,
+                axis=axis,
+            )
+        )
+        return Event(
+            _route_any_backend(
+                values,
+                normalized_destinations,
+                size=normalized_size,
+                axis=normalized_axis,
+            )
+        )
+
+    def route_all(
+        self,
+        destinations: LookupIndices,
+        *,
+        size: int,
+        axis: int = -1,
+    ) -> Event:
+        """Route Boolean values to destinations and combine collisions with AND.
+
+        Routing uses the same destination, shape, axis, and validation rules
+        as :meth:`route_any`. Duplicate destinations are combined with
+        logical AND; destination slots with no source values retain the
+        Boolean identity ``True``.
+        """
+        values, normalized_destinations, normalized_axis, normalized_size = (
+            _prepare_route_inputs(
+                self.values,
+                destinations,
+                size=size,
+                axis=axis,
+            )
+        )
+        return Event(
+            _route_all_backend(
+                values,
+                normalized_destinations,
+                size=normalized_size,
+                axis=normalized_axis,
+            )
+        )
 
     def broadcast_to(self, *shape: int) -> Event:
         """
