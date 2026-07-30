@@ -1,8 +1,8 @@
 """A small vectorized RPG combat: four hunters face a dragon across many rounds."""
 
-import numpy as np
+from typing import Any
 
-from stochroll import Roll, Roller, where
+from stochroll import Roller, where
 
 REPETITIONS = 250_000
 DRAGON_HP = 80
@@ -14,16 +14,13 @@ CLAW_BONUS = 6
 BITE_BONUS = 8
 
 
-def main() -> None:
-    roller = Roller(repetitions=REPETITIONS, seed=20260730)
+def calc(
+    repetitions: int = REPETITIONS,
+    *,
+    seed: int = 20260730,
+) -> dict[str, Any]:
+    roller = Roller(repetitions=repetitions, seed=seed)
 
-    # The final structural axis is the player axis throughout the combat.
-    player_numbers = Roll(
-        np.broadcast_to(
-            np.arange(1, HUNTERS + 1),
-            (REPETITIONS, HUNTERS),
-        )
-    )
     dragon_hp = roller.d(1) + DRAGON_HP - 1
     player_hp = roller.d(1, shape=HUNTERS) + PLAYER_HP - 1
 
@@ -55,8 +52,8 @@ def main() -> None:
         dragon_alive = dragon_hp > 0
 
         # The surviving dragon makes two claws and one bite. Each attack picks
-        # a random target, and the target matching uses the player axis above.
-        claw_targets = [roller.d(HUNTERS) for _ in range(2)]
+        # a zero-based random target; routed collisions are summed per player.
+        claw_targets = [roller.d(HUNTERS) - 1 for _ in range(2)]
         claw_rolls = [roller.d(20) for _ in range(2)]
         claw_hits = [
             (roll + CLAW_BONUS >= PLAYER_ARMOR_CLASS) & ~(roll == 1)
@@ -64,35 +61,34 @@ def main() -> None:
         ]
         claw_damage = [roller.d(6) + 4 for _ in range(2)]
 
-        bite_target = roller.d(HUNTERS)
+        bite_target = roller.d(HUNTERS) - 1
         bite_roll = roller.d(20)
         bite_hit = (bite_roll + BITE_BONUS >= PLAYER_ARMOR_CLASS) & ~(bite_roll == 1)
         bite_damage = roller.pool(2, d=8).sum() + 6
 
-        dragon_attacking = dragon_alive.broadcast_to(HUNTERS)
-        incoming_damage = 0
+        incoming_damage: Any = 0
         for target, hit, damage in zip(
             claw_targets,
             claw_hits,
             claw_damage,
             strict=True,
         ):
-            incoming_damage = incoming_damage + where(
-                dragon_attacking
-                & player_alive
-                & hit.broadcast_to(HUNTERS)
-                & (target.broadcast_to(HUNTERS) == player_numbers),
-                damage.broadcast_to(HUNTERS),
-                0,
+            target_alive = player_alive.lookup(target).select(0)
+            dealt = where(dragon_alive & hit & target_alive, damage, 0)
+            incoming_damage = incoming_damage + dealt.route_sum(
+                target,
+                size=HUNTERS,
             )
 
-        incoming_damage = incoming_damage + where(
-            dragon_attacking
-            & player_alive
-            & bite_hit.broadcast_to(HUNTERS)
-            & (bite_target.broadcast_to(HUNTERS) == player_numbers),
-            bite_damage.broadcast_to(HUNTERS),
+        bite_target_alive = player_alive.lookup(bite_target).select(0)
+        bite_dealt = where(
+            dragon_alive & bite_hit & bite_target_alive,
+            bite_damage,
             0,
+        )
+        incoming_damage = incoming_damage + bite_dealt.route_sum(
+            bite_target,
+            size=HUNTERS,
         )
         player_hp = where(player_alive, player_hp - incoming_damage, 0)
         player_damage_taken = player_damage_taken + incoming_damage
@@ -107,6 +103,20 @@ def main() -> None:
     expected_hits = player_hits.expected()
     expected_damage_taken = player_damage_taken.expected()
 
+    return {
+        "dragon_defeated": dragon_defeated.probability(),
+        "damage_to_dragon": (DRAGON_HP - dragon_hp).expected(),
+        "dragon_hp": dragon_hp.expected(),
+        "surviving_players": surviving_players.expected(),
+        "survival_probability": survival_probability,
+        "expected_hp": expected_hp,
+        "expected_damage_dealt": expected_damage_dealt,
+        "expected_hits": expected_hits,
+        "expected_damage_taken": expected_damage_taken,
+    }
+
+
+def print_results(results: dict[str, Any], repetitions: int = REPETITIONS) -> None:
     print("\n" + "=" * 72)
     print("DRAGON HUNT")
     print(
@@ -114,23 +124,27 @@ def main() -> None:
         "the dragon then uses 2 claws and 1 bite."
     )
     print("-" * 72)
-    print(f"Simulated hunts:              {REPETITIONS:,}")
-    print(f"Dragon defeated:              {dragon_defeated.probability():.1%}")
-    print(f"Expected damage to dragon:    {(DRAGON_HP - dragon_hp).expected():.2f}")
-    print(f"Expected dragon HP remaining: {dragon_hp.expected():.2f}")
-    print(f"Expected players surviving:   {surviving_players.expected():.2f}")
+    print(f"Simulated hunts:              {repetitions:,}")
+    print(f"Dragon defeated:              {results['dragon_defeated']:.1%}")
+    print(f"Expected damage to dragon:    {results['damage_to_dragon']:.2f}")
+    print(f"Expected dragon HP remaining: {results['dragon_hp']:.2f}")
+    print(f"Expected players surviving:   {results['surviving_players']:.2f}")
     print("\nPlayer statistics")
     print("Player | Survives | HP left | Damage dealt | Hits | Damage taken")
     print("-------+----------+---------+--------------+------+-------------")
     for player in range(HUNTERS):
         print(
-            f"  {player + 1:>2}   |  {survival_probability[player]:>6.1%}  |"
-            f"  {expected_hp[player]:>6.2f} |"
-            f"     {expected_damage_dealt[player]:>7.2f} |"
-            f" {expected_hits[player]:>4.2f} |"
-            f"       {expected_damage_taken[player]:>7.2f}"
+            f"  {player + 1:>2}   |  {results['survival_probability'][player]:>6.1%}  |"
+            f"  {results['expected_hp'][player]:>6.2f} |"
+            f"     {results['expected_damage_dealt'][player]:>7.2f} |"
+            f" {results['expected_hits'][player]:>4.2f} |"
+            f"       {results['expected_damage_taken'][player]:>7.2f}"
         )
     print("=" * 72)
+
+
+def main() -> None:
+    print_results(calc())
 
 
 if __name__ == "__main__":

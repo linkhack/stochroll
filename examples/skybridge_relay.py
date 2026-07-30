@@ -4,6 +4,8 @@ Every leg is a 4d6 check with the lowest die dropped. A team that clears all
 legs earns a finish bonus, and the highest final total wins the relay.
 """
 
+from typing import Any
+
 from stochroll import Roller, where
 
 REPETITIONS = 250_000
@@ -12,8 +14,12 @@ LEGS = 4
 FINISH_BONUS = 5
 
 
-def main() -> None:
-    roller = Roller(repetitions=REPETITIONS, seed=20260732)
+def calc(
+    repetitions: int = REPETITIONS,
+    *,
+    seed: int = 20260732,
+) -> dict[str, Any]:
+    roller = Roller(repetitions=repetitions, seed=seed)
 
     # One sample has shape (teams, legs), while the leading axis remains the
     # independent Monte Carlo repetitions axis.
@@ -36,28 +42,46 @@ def main() -> None:
     expected_team_totals = team_totals.expected()
     sole_win_probabilities = sole_team_wins.probability()
 
+    return {
+        "winning_score": winning_score.expected(),
+        "sole_winner": sole_winner.probability(),
+        "tie": (~sole_winner).probability(),
+        "leg_scores": expected_leg_scores,
+        "cleared_legs": expected_cleared_legs,
+        "team_totals": expected_team_totals,
+        "sole_wins": sole_win_probabilities,
+    }
+
+
+def print_results(results: dict[str, Any], repetitions: int = REPETITIONS) -> None:
     print("\n" + "=" * 72)
     print("SKYBRIDGE RELAY")
     print(
         f"{TEAMS} teams race across {LEGS} legs; all legs cleared earns a finish bonus."
     )
     print("-" * 72)
-    print(f"Simulated relays:             {REPETITIONS:,}")
-    print(f"Expected winning score:       {winning_score.expected():.2f}")
-    print(f"Relay has a sole winner:       {sole_winner.probability():.1%}")
-    print(f"Relay ends in a tie:           {(~sole_winner).probability():.1%}")
+    print(f"Simulated relays:             {repetitions:,}")
+    print(f"Expected winning score:       {results['winning_score']:.2f}")
+    print(f"Relay has a sole winner:       {results['sole_winner']:.1%}")
+    print(f"Relay ends in a tie:           {results['tie']:.1%}")
     print("\nTeam statistics")
     print("Team | Leg averages       | Legs cleared | Final total | Sole wins")
     print("-----+---------------------+--------------+-------------+-----------")
     for team in range(TEAMS):
-        leg_averages = ", ".join(f"{score:.2f}" for score in expected_leg_scores[team])
+        leg_averages = ", ".join(
+            f"{score:.2f}" for score in results["leg_scores"][team]
+        )
         print(
             f"  {team + 1:>2} | {leg_averages:<19} |"
-            f"     {expected_cleared_legs[team]:>5.2f}    |"
-            f"    {expected_team_totals[team]:>7.2f}  |"
-            f"   {sole_win_probabilities[team]:>6.1%}"
+            f"     {results['cleared_legs'][team]:>5.2f}    |"
+            f"    {results['team_totals'][team]:>7.2f}  |"
+            f"   {results['sole_wins'][team]:>6.1%}"
         )
     print("=" * 72)
+
+
+def main() -> None:
+    print_results(calc())
 
 
 if __name__ == "__main__":

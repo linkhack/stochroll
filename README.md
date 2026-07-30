@@ -71,7 +71,7 @@ explicit full-rank lookup across teams, singleton-axis construction, and Pool
 structural selection and assembly:
 
 ```python
-from stochroll import Roller, concatenate, stack
+from stochroll import Roller, concatenate, stack, where
 
 roller = Roller(repetitions=100_000, seed=9)
 
@@ -90,6 +90,11 @@ defense = roller.d(12, shape=(2, 4)) + 8
 targets = roller.d(4, shape=2) - 1  # (R, teams)
 target_defense = defense.lookup(targets.add_axis(), axis=-1)
 # targets.add_axis() is (R, teams, 1), making the full-rank lookup explicit.
+
+attack_rolls = roller.d(20, shape=(2, 1))
+attack_hits = attack_rolls >= target_defense
+dealt = where(attack_hits, roller.d(6, shape=(2, 1)), 0)
+damage_by_player = dealt.route_sum(targets.add_axis(), size=4)
 
 # Pool lookup/select operates only on structural axes and retains the dice axis.
 team_pools = roller.pool(3, d=6, shape=2)  # (R, teams, dice)
@@ -121,6 +126,14 @@ Pool assembly additionally requires matching `sides`, matching dice extents,
 and the same `Roller` object. `stack` may insert only before the final dice
 axis, while `concatenate` may target only an existing structural axis. Neither
 operation combines or resizes the Pool dice axis.
+
+`route_sum` replaces the selected structural axis with a positive destination
+extent and sums duplicate destinations; `route_any` performs the same routing
+with Boolean OR collisions. Destinations are zero-based integer values, and
+shaped destinations use explicit full-rank singleton broadcasting. The public
+methods validate all sizes, axes, dtypes, bounds, ranks, repetitions, and
+shapes before dispatching to the active routing implementation. Pool routing
+and overwrite routing are not part of this API.
 
 ## Core concepts
 
