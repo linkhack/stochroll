@@ -1,8 +1,9 @@
 """Shared deterministic fixtures and metadata for benchmark scenarios."""
 
 from dataclasses import dataclass
-from typing import Final, Literal
 from functools import lru_cache
+from typing import Final, Literal
+
 import numpy as np
 from numpy.typing import NDArray
 
@@ -43,15 +44,18 @@ def make_roller(workload: WorkloadSpec, *, seed: int = SEED) -> Roller:
     """Create a seeded Roller for a standard public workload."""
     return Roller(repetitions=workload.repetitions, seed=seed)
 
+
 @lru_cache(maxsize=None, typed=True)
 def build_roll(workload: WorkloadSpec, *, sides: int = 20) -> Roll:
     """Build a standard shaped Roll through the public domain API."""
     return make_roller(workload).d(sides, shape=STRUCTURAL_SHAPE)
 
+
 @lru_cache(maxsize=None, typed=True)
 def build_event(workload: WorkloadSpec) -> Event:
     """Build a standard shaped Event through a public comparison."""
     return build_roll(workload) >= 11
+
 
 @lru_cache(maxsize=None, typed=True)
 def build_pool(
@@ -63,10 +67,12 @@ def build_pool(
     """Build a standard shaped Pool through the public domain API."""
     return make_roller(workload).pool(dice, d=sides, shape=STRUCTURAL_SHAPE)
 
+
 @lru_cache(maxsize=None, typed=True)
 def build_roll_lookup_indices(workload: WorkloadSpec) -> Roll:
     """Build length-three per-repetition Roll lookup indices."""
     return make_roller(workload, seed=SEED + 1).d(6, shape=LOOKUP_SIZE) - 1
+
 
 @lru_cache(maxsize=None, typed=True)
 def build_pool_lookup_indices(

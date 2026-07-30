@@ -4,6 +4,7 @@ These are implementation benchmarks, not public API regression benchmarks.
 Each NumPy and StochRoll pair receives the same ``uint8`` input, final axis,
 and output or accumulator dtype.
 """
+
 from functools import lru_cache
 from typing import Any, ClassVar
 
@@ -24,6 +25,7 @@ POOL_SUM_BOUNDARY_CASES = (
     (21, 12),  # maximum sum 252: uint8
     (22, 12),  # maximum sum 264: uint16
 )
+
 
 @lru_cache(maxsize=None, typed=True)
 def _pool_values(last_axis_size: int) -> NDArray[Any]:
