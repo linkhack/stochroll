@@ -78,6 +78,26 @@ def _route_sum_indexed(
     )
 
 
+def _route_multiply_indexed(
+    values: NDArray[Any],
+    destinations: IntegerArray,
+    *,
+    size: int,
+    axis: int,
+    dtype: np.dtype[Any],
+) -> NDArray[Any]:
+    """Accumulate routed values with duplicate-safe indexed products."""
+    return _route_ufunc_indexed(
+        values,
+        destinations,
+        size=size,
+        axis=axis,
+        dtype=dtype,
+        operation=np.multiply,
+        initial=1,
+    )
+
+
 def _route_any_indexed(
     values: BooleanArray,
     destinations: IntegerArray,
@@ -94,6 +114,25 @@ def _route_any_indexed(
         dtype=np.dtype(np.bool_),
         operation=np.logical_or,
         initial=False,
+    )
+
+
+def _route_all_indexed(
+    values: BooleanArray,
+    destinations: IntegerArray,
+    *,
+    size: int,
+    axis: int,
+) -> BooleanArray:
+    """Combine routed events with duplicate-safe indexed logical AND writes."""
+    return _route_ufunc_indexed(
+        values,
+        destinations,
+        size=size,
+        axis=axis,
+        dtype=np.dtype(np.bool_),
+        operation=np.logical_and,
+        initial=True,
     )
 
 
@@ -115,6 +154,24 @@ def _route_reference_sum(
     return np.moveaxis(output, -1, axis)
 
 
+def _route_reference_multiply(
+    values: NDArray[Any],
+    destinations: IntegerArray,
+    *,
+    size: int,
+    axis: int,
+    dtype: np.dtype[Any],
+) -> np.ndarray:
+    moved_values = np.moveaxis(values, axis, -1)
+    moved_destinations = np.moveaxis(destinations, axis, -1)
+    output = np.ones((*moved_values.shape[:-1], size), dtype=dtype)
+    for row in np.ndindex(output.shape[:-1]):
+        for source_index in range(moved_values.shape[-1]):
+            destination_index = moved_destinations[(*row, source_index)]
+            output[(*row, destination_index)] *= moved_values[(*row, source_index)]
+    return np.moveaxis(output, -1, axis)
+
+
 def _route_reference_any(
     values: NDArray[Any],
     destinations: IntegerArray,
@@ -129,4 +186,21 @@ def _route_reference_any(
         for source_index in range(moved_values.shape[-1]):
             destination_index = moved_destinations[(*row, source_index)]
             output[(*row, destination_index)] |= moved_values[(*row, source_index)]
+    return np.moveaxis(output, -1, axis)
+
+
+def _route_reference_all(
+    values: NDArray[Any],
+    destinations: IntegerArray,
+    *,
+    size: int,
+    axis: int,
+) -> np.ndarray:
+    moved_values = np.moveaxis(values, axis, -1)
+    moved_destinations = np.moveaxis(destinations, axis, -1)
+    output = np.ones((*moved_values.shape[:-1], size), dtype=np.bool_)
+    for row in np.ndindex(output.shape[:-1]):
+        for source_index in range(moved_values.shape[-1]):
+            destination_index = moved_destinations[(*row, source_index)]
+            output[(*row, destination_index)] &= moved_values[(*row, source_index)]
     return np.moveaxis(output, -1, axis)

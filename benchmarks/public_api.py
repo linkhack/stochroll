@@ -175,8 +175,14 @@ class RoutingMethods:
     def time_route_sum(self, workload: WorkloadSpec) -> None:
         self.roll.route_sum(self.destinations, size=6)
 
+    def time_route_multipy(self, workload: WorkloadSpec) -> None:
+        self.roll.route_multiply(self.destinations, size=6)
+
     def time_route_any(self, workload: WorkloadSpec) -> None:
         self.event.route_any(self.destinations, size=6)
+
+    def time_route_all(self, workload: WorkloadSpec) -> None:
+        self.event.route_all(self.destinations, size=6)
 
 
 class PoolMethods:

@@ -11,4 +11,6 @@ def check_routing_types() -> None:
     destinations = np.zeros((2, 3), dtype=np.int64)
 
     assert_type(roll.route_sum(destinations, size=2), Roll)
+    assert_type(roll.route_multiply(destinations, size=2), Roll)
     assert_type(event.route_any(destinations, size=2), Event)
+    assert_type(event.route_all(destinations, size=2), Event)

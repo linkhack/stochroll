@@ -15,7 +15,9 @@ from ._reductions import (
     _reduce_sum_last_axis,
     _signed_dtype_for_unsigned,
 )
+from ._routing import _route_all_indexed as _route_all_backend
 from ._routing import _route_any_indexed as _route_any_backend
+from ._routing import _route_multiply_indexed as _route_multiply_backend
 from ._routing import _route_sum_indexed as _route_sum_backend
 from ._typing import (
     AxisLike,
@@ -867,6 +869,40 @@ class Roll:
             )
         )
 
+    def route_multiply(
+        self,
+        destinations: LookupIndices,
+        *,
+        size: int,
+        axis: int = -1,
+    ) -> Roll:
+        """Route numeric values to destinations and multiply collisions.
+
+        Routing uses the same destination, shape, axis, and validation rules
+        as :meth:`route_sum`. Duplicate destinations are multiplied together;
+        destination slots with no source values retain the multiplicative
+        identity of one. Numeric outputs use the same accumulation dtype
+        convention as :meth:`sum`.
+        """
+        values, normalized_destinations, normalized_axis, normalized_size = (
+            _prepare_route_inputs(
+                self.values,
+                destinations,
+                size=size,
+                axis=axis,
+            )
+        )
+        dtype = _default_sum_dtype(self.values.dtype)
+        return Roll(
+            _route_multiply_backend(
+                values,
+                normalized_destinations,
+                size=normalized_size,
+                axis=normalized_axis,
+                dtype=dtype,
+            )
+        )
+
     # ------------------------------------------------------------
     # Shape reductions
     # ------------------------------------------------------------
@@ -1097,6 +1133,37 @@ class Event:
         )
         return Event(
             _route_any_backend(
+                values,
+                normalized_destinations,
+                size=normalized_size,
+                axis=normalized_axis,
+            )
+        )
+
+    def route_all(
+        self,
+        destinations: LookupIndices,
+        *,
+        size: int,
+        axis: int = -1,
+    ) -> Event:
+        """Route Boolean values to destinations and combine collisions with AND.
+
+        Routing uses the same destination, shape, axis, and validation rules
+        as :meth:`route_any`. Duplicate destinations are combined with
+        logical AND; destination slots with no source values retain the
+        Boolean identity ``True``.
+        """
+        values, normalized_destinations, normalized_axis, normalized_size = (
+            _prepare_route_inputs(
+                self.values,
+                destinations,
+                size=size,
+                axis=axis,
+            )
+        )
+        return Event(
+            _route_all_backend(
                 values,
                 normalized_destinations,
                 size=normalized_size,
