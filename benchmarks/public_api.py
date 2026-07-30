@@ -6,8 +6,8 @@ Setup prepares deterministic inputs and each timed method contains one public
 operation.
 """
 
-from typing import ClassVar
 from copy import deepcopy
+from typing import ClassVar
 
 from benchmarks._support import (
     KEEP_DROP_BRANCHES,
@@ -224,7 +224,6 @@ class PoolKeepDropBranches:
 
     def time_keep_highest(self, workload: WorkloadSpec, branch: str) -> None:
         self.pool.keep_highest(self.k)
-
 
     def time_drop_highest(self, workload: WorkloadSpec, branch: str) -> None:
         self.pool.drop_highest(self.drop_k)
