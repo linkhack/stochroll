@@ -61,6 +61,33 @@ print(f"P(4+ hits): {hits.indicator().sum().probability_at_least(4):.1%}")
 
 The arrays behind these objects have a leading repetitions axis. `shape=6` adds six structural values to each simulation sample, so the second example evaluates six attacks in parallel. `broadcast_to(...)` can expand a shared value or event to match such a structural shape.
 
+### Multi-round dice with an active mask
+
+When individual dice must retain stable positions across rounds, represent the
+hand as a structural `Roll` and keep the activity state in an `Event`. This
+example locks every six and rerolls the remaining dice up to twice:
+
+```python
+from stochroll import Roller, where
+
+roller = Roller(repetitions=100_000, seed=17)
+hand = roller.d(6, shape=5)
+active = hand != 6
+
+for _ in range(2):
+    fresh_hand = roller.d(6, shape=5)
+    hand = where(active, fresh_hand, hand)
+    active = active & (hand != 6)
+
+score = hand.sum()
+print(f"Expected score: {score.expected():.2f}")
+```
+
+The caller can replace `hand != 6` with any strategy that produces an
+equal-shaped `Event`. Each round draws a complete candidate hand and discards
+values for inactive positions, so random-number consumption does not depend on
+how many dice remain active.
+
 ## Structural operations
 
 `select` chooses fixed structural entries, while `lookup` can choose different
