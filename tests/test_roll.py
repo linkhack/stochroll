@@ -124,6 +124,80 @@ def test_roll_reductions_are_exact() -> None:
     np.testing.assert_allclose(roll.probability_at_least(4), [0.5, 0.5, 0.5])
 
 
+def test_distribution_statistics_match_numpy_for_scalar_and_shaped_rolls() -> None:
+    values = np.array(
+        [
+            [[1, 2], [3, 4]],
+            [[2, 4], [6, 8]],
+            [[4, 8], [12, 16]],
+            [[8, 16], [24, 32]],
+        ],
+        dtype=np.float32,
+    )
+    roll = Roll(values)
+
+    np.testing.assert_allclose(
+        roll.variance(ddof=1), np.var(values, axis=0, dtype=np.float64, ddof=1)
+    )
+    np.testing.assert_allclose(
+        roll.standard_deviation(), np.std(values, axis=0, dtype=np.float64)
+    )
+    np.testing.assert_allclose(
+        roll.quantile([0, 0.5, 1], method="linear"),
+        np.quantile(values, [0, 0.5, 1], axis=0, method="linear"),
+    )
+    assert roll.variance().dtype == np.dtype(np.float64)
+    assert roll.standard_deviation().dtype == np.dtype(np.float64)
+    assert roll.quantile(0.5).dtype == np.dtype(roll.values.dtype)
+
+
+def test_distribution_statistics_preserve_scalar_and_zero_structural_shapes() -> None:
+    scalar = Roll(np.array([1, 2, 4], dtype=np.int64))
+    assert scalar.variance().shape == ()
+    assert scalar.standard_deviation().shape == ()
+    assert scalar.quantile(0.5).shape == ()
+
+    empty = Roll(np.empty((3, 2, 0), dtype=np.float64))
+    assert empty.variance().shape == (2, 0)
+    assert empty.standard_deviation().shape == (2, 0)
+    assert empty.quantile(0.5).shape == (2, 0)
+
+
+def test_probability_at_most_is_inclusive_and_preserves_shape() -> None:
+    values = np.array([[1.0, 2.5], [2.0, 2.5], [3.0, 4.0]])
+    roll = Roll(values)
+
+    np.testing.assert_array_equal(
+        roll.probability_at_most(2.5),
+        np.count_nonzero(values <= 2.5, axis=0) / 3,
+    )
+
+
+@pytest.mark.parametrize("ddof", [-1, 3, 1.5, True])
+def test_variance_and_standard_deviation_reject_invalid_ddof(ddof: object) -> None:
+    roll = Roll(np.array([1, 2, 3], dtype=np.int64))
+
+    with pytest.raises((TypeError, ValueError)):
+        roll.variance(ddof=ddof)  # type: ignore[arg-type]
+    with pytest.raises((TypeError, ValueError)):
+        roll.standard_deviation(ddof=ddof)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "q", [-0.1, 1.1, np.nan, [0.25, np.inf], [True, False], [1, [1, 2]]]
+)
+def test_quantile_rejects_invalid_q(q: object) -> None:
+    roll = Roll(np.array([1, 2, 3], dtype=np.int64))
+
+    with pytest.raises((TypeError, ValueError)):
+        roll.quantile(q)  # type: ignore[arg-type]
+
+
+def test_quantile_rejects_unknown_method() -> None:
+    with pytest.raises(ValueError, match="unsupported quantile method"):
+        Roll(np.array([1, 2, 3], dtype=np.int64)).quantile(0.5, method="unknown")
+
+
 @pytest.mark.parametrize(
     "shape",
     [

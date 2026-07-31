@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Basic distribution statistics on `Roll`: variance, standard deviation,
+  quantiles, and inclusive at-most probabilities.
+
 ## [0.1.0] - 2026-07-31
 
 ### Added

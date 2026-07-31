@@ -3,7 +3,7 @@ from __future__ import annotations
 import operator
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import cast, overload
+from typing import Any, Literal, cast, get_args, overload
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -35,6 +35,24 @@ type ElementwiseOperand = ElementwiseWrapper | NumericScalar
 type FixedIndices = int | slice | ArrayLike
 type LookupIndices = Roll | ArrayLike
 type AssemblyValue = Roll | Event | Pool
+
+QUANTILE_METHODS = Literal[
+    "inverted_cdf",
+    "averaged_inverted_cdf",
+    "closest_observation",
+    "interpolated_inverted_cdf",
+    "hazen",
+    "weibull",
+    "linear",
+    "median_unbiased",
+    "normal_unbiased",
+    "lower",
+    "higher",
+    "midpoint",
+    "nearest",
+]
+
+_QUANTILE_METHODS = frozenset(get_args(QUANTILE_METHODS))
 
 
 # ============================================================
@@ -141,6 +159,43 @@ def _integer_indices(indices: ArrayLike) -> IntegerArray:
     return cast(IntegerArray, values)
 
 
+def _validate_ddof(ddof: int, repetitions: int) -> int:
+    if isinstance(ddof, (bool, np.bool_)):
+        raise TypeError("ddof must be an integer, not bool")
+    try:
+        normalized = operator.index(ddof)
+    except TypeError:
+        raise TypeError("ddof must be an integer") from None
+    if not 0 <= normalized < repetitions:
+        raise ValueError(
+            f"ddof must satisfy 0 <= ddof < repetitions ({repetitions}), "
+            f"got {normalized}"
+        )
+    return normalized
+
+
+def _validate_quantile(q: ArrayLike, method: str) -> NDArray[Any]:
+    if not isinstance(method, str) or method not in _QUANTILE_METHODS:
+        supported = ", ".join(sorted(_QUANTILE_METHODS))
+        raise ValueError(
+            f"unsupported quantile method {method!r}; choose from {supported}"
+        )
+
+    try:
+        values = np.asarray(q)
+    except (TypeError, ValueError) as error:
+        raise TypeError("q must be a numeric scalar or array-like value") from error
+    if (
+        not np.issubdtype(values.dtype, np.number)
+        or np.issubdtype(values.dtype, np.bool_)
+        or np.issubdtype(values.dtype, np.complexfloating)
+    ):
+        raise TypeError("q must have a numeric, non-Boolean dtype")
+    if np.any(~np.isfinite(values)) or np.any((values < 0) | (values > 1)):
+        raise ValueError("q values must be finite and between 0 and 1 inclusive")
+    return values
+
+
 def _validate_index_bounds(
     indices: IntegerArray,
     *,
@@ -197,8 +252,9 @@ def _normalize_lookup_indices[DType: np.generic](
             shape[axis] = lookup_size  # [R,T,1] or [R,1,T]
             normalized = normalized.reshape(shape)
 
-    if normalized.ndim != values.ndim:
-        raise ValueError("lookup indices must have the same rank as the source")
+    assert normalized.ndim == values.ndim, (
+        "lookup indices must have the same rank as the source"
+    )
 
     repetitions = normalized.shape[0]
     if repetitions not in (1, values.shape[0]):
@@ -990,7 +1046,7 @@ class Roll:
             k,
             dtype=np.float64,
         )
-        return cast(NDArray[np.float64], result)
+        return result
 
     def probability_at_least(self, target: NumericScalar) -> NDArray[np.float64]:
         """Return the probability of reaching at least ``target``.
@@ -1002,6 +1058,57 @@ class Roll:
         k = len(self.values)
         out = np.count_nonzero(self.values >= target, axis=0)
         result = np.divide(out, k, dtype=np.float64)
+        return cast(NDArray[np.float64], result)
+
+    def probability_at_most(self, target: NumericScalar) -> NDArray[np.float64]:
+        """Return the probability of being at most ``target`` inclusively."""
+        k = len(self.values)
+        out = np.count_nonzero(self.values <= target, axis=0)
+        result = np.divide(out, k, dtype=np.float64)
+        return cast(NDArray[np.float64], result)
+
+    def variance(self, *, ddof: int = 0) -> NDArray[np.float64]:
+        """Return the variance over repetitions, preserving structural axes."""
+        normalized_ddof = _validate_ddof(ddof, len(self.values))
+        result = np.var(
+            self.values,
+            axis=0,
+            dtype=np.float64,
+            ddof=normalized_ddof,
+        )
+        return result
+
+    def standard_deviation(self, *, ddof: int = 0) -> NDArray[np.float64]:
+        """Return the standard deviation over repetitions."""
+        normalized_ddof = _validate_ddof(ddof, len(self.values))
+        result = np.std(
+            self.values,
+            axis=0,
+            dtype=np.float64,
+            ddof=normalized_ddof,
+        )
+        return result
+
+    def quantile(
+        self, q: ArrayLike, *, method: QUANTILE_METHODS = "inverted_cdf"
+    ) -> NDArray[np.float64]:
+        """Return quantiles over repetitions using a NumPy quantile method.
+
+        Scalar ``q`` preserves the structural shape. Array-like ``q`` adds
+        leading quantile dimensions.
+        """
+        normalized_q = cast(
+            NDArray[np.integer[Any] | np.floating[Any]],
+            _validate_quantile(q, method),
+        )
+
+        result = np.quantile(
+            self.values,
+            normalized_q,
+            axis=0,
+            method=method,
+        )
+
         return cast(NDArray[np.float64], result)
 
 
