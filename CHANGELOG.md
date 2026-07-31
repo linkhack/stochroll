@@ -1,14 +1,25 @@
-## Unreleased
+# Changelog
 
-- Add an opt-in local ASV benchmark suite for reproducible hot-path and
-  implementation-candidate comparisons.
-- Add public `stack` and `concatenate` functions for homogeneous structural
-  assembly of `Roll`, `Event`, and `Pool` values.
-- Add `Roll.route_sum` and `Event.route_any` for duplicate-safe destination
-  routing with explicit shape, axis, dtype, and validation semantics.
-- Add fixed structural `select` and per-repetition `lookup` for `Roll`,
-  `Event`, and structural Pool axes, plus singleton-axis insertion for `Roll`
-  and `Event`.
-- Add `Event.indicator()` for shape-preserving numeric 0/1 conversion.
-- Type Roll and Event statistical summaries as `NDArray[np.float64]` while
-  preserving NumPy's scalar runtime results for scalar-valued simulations.
+All notable changes to StochRoll will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+## [0.1.0] - 2026-07-31
+
+### Added
+
+- Initial public release of StochRoll.
+- Vectorized Monte Carlo simulation of dice rolls and dice pools.
+- Core `Roller`, `Roll`, `Pool`, and `Event` APIs.
+- Reproducible simulations through seeded random-number generation.
+- Arithmetic, comparison, logical, and reduction operations on simulation results.
+- Dice-pool operations for keeping, dropping, and rerolling dice.
+- Structural selection, broadcasting, concatenation, stacking, and routing operations.
+- Statistical methods for expected values and event probabilities.
+- NumPy integration, static type annotations, documentation, and test coverage.
+
+[Unreleased]: https://github.com/linkhack/stochroll/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/linkhack/stochroll/releases/tag/v0.1.0
