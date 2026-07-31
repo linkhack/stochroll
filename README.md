@@ -24,6 +24,8 @@ damage = roller.pool(4, d=6).drop_lowest().sum() + 3
 
 print(f"Expected result: {damage.expected():.2f}")
 print(f"P(result >= 15): {damage.probability_at_least(15):.1%}")
+print(f"Typical result: {damage.quantile(0.5):.0f}")
+print(f"Spread: {damage.standard_deviation():.2f}")
 ```
 
 `seed` is optional. The default is one million repetitions, so estimates are useful without having to choose a sample size first.
@@ -160,6 +162,16 @@ second = Roller(repetitions=10_000, seed=7).d(20)
 Reproducibility applies when the seed, repetition count, operation order, and draw shapes are the same. The random generator advances as values are drawn, so inserting or reordering a draw changes subsequent results. Results can also vary across changes to the Python/NumPy environment; StochRoll does not replace a statistical test with a fixed exact calculation.
 
 Monte Carlo estimates converge with more repetitions but have sampling error. For an estimated probability `p` from `N` independent repetitions, the approximate standard error is `sqrt(p * (1 - p) / N)`. Expected values have standard error approximately `sigma / sqrt(N)`, where `sigma` is the standard deviation of the simulated quantity. Increase `repetitions` when you need tighter estimates, especially for rare events.
+
+`variance()` and `standard_deviation()` summarize spread across repetitions;
+they accept `ddof=0` by default, or a valid sample-statistics degree of freedom
+below the repetition count. `quantile(q)` reports percentiles, with scalar `q`
+preserving structural shape and array-like `q` adding leading quantile axes.
+The default discrete `inverted_cdf` method is useful for dice outcomes; NumPy's
+other supported quantile methods are available through `method=`. Quantiles may
+sort or copy the simulation values, so they can use more memory than simple
+summaries. `probability_at_most(target)` is the inclusive lower-tail counterpart
+to `probability_at_least(target)`.
 
 ## Development
 

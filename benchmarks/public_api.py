@@ -75,7 +75,7 @@ class RollOperators:
 
 
 class RollMethods:
-    """Measure public structural, reduction, and summary Roll methods."""
+    """Measure public structural and reduction Roll methods."""
 
     params: ClassVar = [STANDARD_WORKLOADS]
     param_names: ClassVar = ["workload"]
@@ -110,15 +110,9 @@ class RollMethods:
     def time_broadcast_to(self, workload: WorkloadSpec) -> None:
         self.scalar_roll.broadcast_to(6)
 
-    def time_expected(self, workload: WorkloadSpec) -> None:
-        self.roll.expected()
-
-    def time_probability_at_least(self, workload: WorkloadSpec) -> None:
-        self.roll.probability_at_least(11)
-
 
 class EventMethods:
-    """Measure Boolean, structural, reduction, and summary Event methods."""
+    """Measure Boolean, structural, and reduction Event methods."""
 
     params: ClassVar = [STANDARD_WORKLOADS]
     param_names: ClassVar = ["workload"]
@@ -157,8 +151,37 @@ class EventMethods:
     def time_indicator(self, workload: WorkloadSpec) -> None:
         self.left.indicator()
 
-    def time_probability(self, workload: WorkloadSpec) -> None:
-        self.left.probability()
+
+class StatisticsMethods:
+    """Measure public statistical summaries on prepared Roll and Event values."""
+
+    params: ClassVar = [STANDARD_WORKLOADS]
+    param_names: ClassVar = ["workload"]
+
+    def setup(self, workload: WorkloadSpec) -> None:
+        self.roll = build_roll(workload)
+        self.event = build_event(workload)
+
+    def time_expected(self, workload: WorkloadSpec) -> None:
+        self.roll.expected()
+
+    def time_probability_at_least(self, workload: WorkloadSpec) -> None:
+        self.roll.probability_at_least(11)
+
+    def time_probability_at_most(self, workload: WorkloadSpec) -> None:
+        self.roll.probability_at_most(11)
+
+    def time_variance(self, workload: WorkloadSpec) -> None:
+        self.roll.variance()
+
+    def time_standard_deviation(self, workload: WorkloadSpec) -> None:
+        self.roll.standard_deviation()
+
+    def time_quantile(self, workload: WorkloadSpec) -> None:
+        self.roll.quantile(0.5)
+
+    def time_event_probability(self, workload: WorkloadSpec) -> None:
+        self.event.probability()
 
 
 class RoutingMethods:

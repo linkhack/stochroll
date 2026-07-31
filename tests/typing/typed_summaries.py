@@ -12,4 +12,8 @@ def check_typed_summaries() -> None:
 
     assert_type(roll.expected(), NDArray[np.float64])
     assert_type(roll.probability_at_least(2), NDArray[np.float64])
+    assert_type(roll.probability_at_most(2), NDArray[np.float64])
+    assert_type(roll.variance(), NDArray[np.float64])
+    assert_type(roll.standard_deviation(), NDArray[np.float64])
+    assert_type(roll.quantile(0.5), NDArray[np.float64])
     assert_type(event.probability(), NDArray[np.float64])
