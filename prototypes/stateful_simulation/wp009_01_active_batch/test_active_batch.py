@@ -7,7 +7,6 @@ from stochroll import Event, Pool, Roll
 from stochroll._prototypes.stateful_simulation._shared import (
     RecordingRNG,
     Roller,
-    SimulationLimitExceeded,
     validate_max_steps,
 )
 from stochroll._prototypes.stateful_simulation.wp009_01_active_batch.reference import (
@@ -16,6 +15,7 @@ from stochroll._prototypes.stateful_simulation.wp009_01_active_batch.reference i
     ROUNDS,
     dragon_hunt_active,
     dragon_hunt_dense,
+    dragon_hunt_numpy,
     lantern_run_active,
     lantern_run_dense,
 )
@@ -138,7 +138,7 @@ def test_validation_rejects_invalid_merge_metadata_without_mutation() -> None:
     np.testing.assert_array_equal(base.values, original)
 
 
-def test_limit_validation_failure_and_immediate_termination() -> None:
+def test_limit_validation_and_immediate_termination() -> None:
     assert validate_max_steps(np.int64(2)) == 2
     with pytest.raises(TypeError, match="bool"):
         validate_max_steps(True)
@@ -151,10 +151,8 @@ def test_limit_validation_failure_and_immediate_termination() -> None:
     result = lantern_run_active(4, initially_active=empty)
     assert result.draws == 0
     assert result.transitions == 0
-    with pytest.raises(SimulationLimitExceeded) as caught:
-        lantern_run_active(8, seed=11, max_steps=1)
-    assert caught.value.max_steps == 1
-    assert 0 < caught.value.remaining <= 8
+    limited = lantern_run_active(8, seed=11, max_steps=1)
+    np.testing.assert_array_equal(limited.termination_step.values, 1)
 
 
 def test_lantern_reference_has_successful_horizon_and_fewer_packed_draws() -> None:
@@ -175,6 +173,7 @@ def test_lantern_reference_has_successful_horizon_and_fewer_packed_draws() -> No
 def test_dragon_reference_is_bounded_dense_and_active_only() -> None:
     dense = dragon_hunt_dense(64, seed=13, max_steps=ROUNDS)
     packed = dragon_hunt_active(64, seed=13, max_steps=ROUNDS)
+    numpy_compacted = dragon_hunt_numpy(64, seed=13, max_steps=ROUNDS)
 
     assert dense.dragon_hp.values.shape == packed.dragon_hp.values.shape == (64,)
     assert (
@@ -186,6 +185,20 @@ def test_dragon_reference_is_bounded_dense_and_active_only() -> None:
     )
     assert packed.transitions <= dense.transitions
     assert packed.draws <= dense.draws
+    np.testing.assert_array_equal(
+        numpy_compacted.dragon_hp.values,
+        packed.dragon_hp.values,
+    )
+    np.testing.assert_array_equal(
+        numpy_compacted.player_hp.values,
+        packed.player_hp.values,
+    )
+    np.testing.assert_array_equal(
+        numpy_compacted.termination_step.values,
+        packed.termination_step.values,
+    )
+    assert numpy_compacted.transitions == packed.transitions
+    assert numpy_compacted.draws == packed.draws
     no_players_alive = ~(packed.player_hp.values > 0).any(axis=1)
     assert np.all(
         (packed.dragon_hp.values <= 0)

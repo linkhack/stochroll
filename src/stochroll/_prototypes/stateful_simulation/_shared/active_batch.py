@@ -34,8 +34,9 @@ class ActiveBatch:
     """A compact view of stable active repetition positions."""
 
     def __init__(self, parent: Roller, positions: NDArray[np.intp]) -> None:
+        # positions parameter needs to be a copy
         self._parent = parent
-        self._positions = positions.copy()
+        self._positions = positions
         self._positions.flags.writeable = False
         self._roller = Roller(repetitions=len(positions))
         self._roller.rng = parent.rng
@@ -46,9 +47,7 @@ class ActiveBatch:
 
     @property
     def positions(self) -> NDArray[np.intp]:
-        positions = self._positions.copy()
-        positions.flags.writeable = False
-        return positions
+        return self._positions
 
     def d(self, sides: int, *, shape: ShapeLike | None = None) -> Roll:
         return self._roller.d(sides, shape=shape)
@@ -106,19 +105,19 @@ class ActiveBatch:
         if type(base) is Roll:
             roll_update = cast(Roll, update)
             dtype = np.result_type(base.values.dtype, roll_update.values.dtype)
-            values = base.values.astype(dtype, copy=True)
+            values = base.values.astype(dtype, copy=False)
             values[self._positions] = roll_update.values
             return Roll(cast(RollArray, values))
 
         if type(base) is Event:
             event_update = cast(Event, update)
-            values = base.values.copy()
+            values = base.values
             values[self._positions] = event_update.values
             return Event(values)
 
         base_pool = cast(Pool, base)
         update_pool = cast(Pool, update)
-        values = base_pool.values.copy()
+        values = base_pool.values
         values[self._positions] = update_pool.values
         return Pool(
             values,

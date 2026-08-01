@@ -7,7 +7,6 @@ from stochroll import Event, Pool, Roll
 from stochroll._prototypes.stateful_simulation._shared import (
     ActiveBatch,
     Roller,
-    SimulationLimitExceeded,
 )
 
 roller = Roller(repetitions=2, seed=42)
@@ -29,7 +28,3 @@ if maybe_batch is not None:
         Event,
     )
     assert_type(batch.merge(dense_pool, batch.take(dense_pool)), Pool)
-
-error = SimulationLimitExceeded(3, 1)
-assert_type(error.max_steps, int)
-assert_type(error.remaining, int)

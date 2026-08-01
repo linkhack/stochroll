@@ -14,16 +14,16 @@ from `stochroll`.
 
 ## Lifecycle and state contract
 
-Both reference scenarios use an explicit positive `max_steps` guard. A missing
-active batch terminates normally without a transition or random draw. Exhausting
-the guard while repetitions remain active raises `SimulationLimitExceeded` with
-the validated limit and remaining count.
+Both reference scenarios use an explicit positive `max_steps` horizon, capped at
+their domain horizon. A missing active batch terminates normally without a
+transition or random draw. Repetitions still active at the configured horizon
+are assigned that horizon as their termination step; bounded truncation is a
+normal result rather than an exception.
 
 Lantern Run treats a trap as terminal and also marks room six as a successful
 domain horizon. Dragon Hunt treats dragon defeat, party defeat, and round 15 as
-terminal. Reaching a smaller caller-provided guard with an active repetition is
-failure rather than successful truncation. Each scenario returns dense final
-state plus a dense integer termination step maintained by the caller.
+terminal. Each scenario returns dense final state plus a dense integer
+termination step maintained by the caller.
 
 Activity has exact shape `(R,)` and applies only to whole repetitions. Shaped
 state, such as the four-player axis in Dragon Hunt, remains dense within every
@@ -59,8 +59,10 @@ behavior are unchanged.
 
 The isolated `asv.wp009.conf.json` configuration keeps prototype cases out of
 the normal ASV matrix. `ActiveFraction` compares one shaped d20 draw at active
-fractions 100%, 75%, 25%, 1%, and 0%. `ReferenceScenarios` compares dense and
-packed Lantern Run and Dragon Hunt functions at 2,000, 10,000, and 100,000
+fractions 100%, 75%, 25%, 1%, and 0%. It also compares ActiveBatch and direct
+NumPy implementations for `take`, `merge`, and the combined batch, roll, take,
+and merge path. `ReferenceScenarios` compares dense and packed Lantern Run plus
+dense, packed, and NumPy-compacted Dragon Hunt at 2,000, 10,000, and 100,000
 repetitions. Ordinary tests assert draw contracts but contain no timing
 threshold.
 

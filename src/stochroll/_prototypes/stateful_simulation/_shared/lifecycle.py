@@ -3,22 +3,9 @@
 from __future__ import annotations
 
 import operator
-from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-
-
-@dataclass(frozen=True, slots=True)
-class SimulationLimitExceeded(RuntimeError):
-    max_steps: int
-    remaining: int
-
-    def __str__(self) -> str:
-        return (
-            f"simulation did not terminate within {self.max_steps} steps; "
-            f"{self.remaining} repetitions remain active"
-        )
 
 
 def validate_max_steps(max_steps: int | np.integer[Any]) -> int:
