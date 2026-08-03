@@ -4,7 +4,7 @@
     "project_url": "https://github.com/linkhack/stochroll",
     "repo": ".",
     "branches": [
-        "feat/stateful-simulation"
+        "prototype/event-masked-index-sampling"
     ],
     "benchmark_dir": "prototypes/stateful_simulation/benchmarks",
     "show_commit_url": "https://github.com/linkhack/stochroll/commit/",

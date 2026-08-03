@@ -49,6 +49,21 @@ def test_activity_validation_positions_and_empty_batch() -> None:
     )
 
 
+def test_active_batch_does_not_construct_a_discarded_generator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    roller = Roller(repetitions=3, seed=7)
+
+    def unexpected_generator(*args: object, **kwargs: object) -> None:
+        raise AssertionError(f"unexpected generator construction: {args}, {kwargs}")
+
+    monkeypatch.setattr(np.random, "default_rng", unexpected_generator)
+    batch = roller.active_batch(Event(np.array([True, False, True])))
+
+    assert batch is not None
+    assert batch.repetitions == 2
+
+
 def test_take_and_merge_preserve_wrappers_shapes_and_inactive_state() -> None:
     roller = Roller(repetitions=4, seed=8)
     batch = roller.active_batch(Event(np.array([False, True, False, True])))

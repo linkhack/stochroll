@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import cast, overload
+from typing import Self, SupportsIndex, cast, overload
 
 import numpy as np
 from numpy.typing import NDArray
@@ -11,9 +11,27 @@ from stochroll import Event, Pool, Roll
 from stochroll import Roller as ProductionRoller
 from stochroll._typing import EventArray, PoolArray, RollArray, ShapeLike
 
+from ..wp012_event_sampling.sampling import (
+    draw_ordinals,
+    prepare_sampling,
+    sample_vectorized_unchecked,
+)
+
 
 class Roller(ProductionRoller):
     """Prototype Roller with an explicit whole-repetition batch boundary."""
+
+    @classmethod
+    def _with_shared_rng(
+        cls,
+        repetitions: int,
+        rng: np.random.Generator,
+    ) -> Self:
+        """Construct an internal compact view without creating a discarded RNG."""
+        roller = cls.__new__(cls)
+        roller.repetitions = repetitions
+        roller.rng = rng
+        return roller
 
     def active_batch(self, active: Event) -> ActiveBatch | None:
         if not isinstance(active, Event):
@@ -24,7 +42,7 @@ class Roller(ProductionRoller):
                 f"({self.repetitions},), got {active.values.shape}"
             )
 
-        positions = np.flatnonzero(active.values).astype(np.intp, copy=False)
+        positions = np.flatnonzero(active.values)
         if positions.size == 0:
             return None
         return ActiveBatch(self, positions)
@@ -34,12 +52,10 @@ class ActiveBatch:
     """A compact view of stable active repetition positions."""
 
     def __init__(self, parent: Roller, positions: NDArray[np.intp]) -> None:
-        # positions parameter needs to be a copy
         self._parent = parent
         self._positions = positions
         self._positions.flags.writeable = False
-        self._roller = Roller(repetitions=len(positions))
-        self._roller.rng = parent.rng
+        self._roller = Roller._with_shared_rng(len(positions), parent.rng)
 
     @property
     def repetitions(self) -> int:
@@ -60,6 +76,31 @@ class ActiveBatch:
         shape: ShapeLike | None = None,
     ) -> Pool:
         return self._roller.pool(dice, d=d, shape=shape)
+
+    def sample_indices(
+        self,
+        eligible: Event,
+        *,
+        size: SupportsIndex = 1,
+        axis: SupportsIndex = -1,
+    ) -> Roll:
+        """Sample eligible structural indices for each preserved coordinate."""
+        if not isinstance(eligible, Event):
+            raise TypeError("eligible must be an Event")
+
+        prepared = prepare_sampling(
+            eligible.values,
+            repetitions=self.repetitions,
+            size=size,
+            axis=axis,
+        )
+        if prepared.counts.size == 0:
+            # A zero-sized preserved axis means there are no eligibility
+            # slices to validate or sample, so the shared RNG stays untouched.
+            return Roll(np.empty(prepared.output_shape, dtype=np.intp))
+
+        ordinals = draw_ordinals(self._roller.rng, prepared)
+        return Roll(sample_vectorized_unchecked(prepared, ordinals))
 
     @overload
     def take(self, value: Roll) -> Roll: ...
