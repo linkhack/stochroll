@@ -67,24 +67,47 @@ dense, packed, and NumPy-compacted Dragon Hunt at 2,000, 10,000, and 100,000
 repetitions. Ordinary tests assert draw contracts but contain no timing
 threshold.
 
-The active-fraction draw counts for 10,000 repetitions and structural shape 4
-are deterministic:
+The final child-branch measurement ran non-persistently against revision
+`bf39803` on Python 3.12 and NumPy 2.5.1. The active-fraction draw counts for
+10,000 repetitions and structural shape 4 are deterministic:
 
 | Active | Dense draws | Packed draws | Dense time | Packed time |
 | ---: | ---: | ---: | ---: | ---: |
-| 100% | 40,000 | 40,000 | 118 ± 2 µs | 148 ± 2 µs |
-| 75% | 40,000 | 30,000 | 116 ± 0.2 µs | 123 ± 0.9 µs |
-| 25% | 40,000 | 10,000 | 117 ± 1 µs | 67.2 ± 0.9 µs |
-| 1% | 40,000 | 400 | 117 ± 4 µs | 47.4 ± 0.2 µs |
-| 0% | 40,000 | 0 | 114 ± 2 µs | 12.5 ± 0.07 µs |
+| 100% | 40,000 | 40,000 | 110 ± 3 µs | 108 ± 3 µs |
+| 75% | 40,000 | 30,000 | 112 ± 2 µs | 83.9 ± 1 µs |
+| 25% | 40,000 | 10,000 | 109 ± 1 µs | 35.5 ± 4 µs |
+| 1% | 40,000 | 400 | 110 ± 5 µs | 9.13 ± 0.5 µs |
+| 0% | 40,000 | 0 | 109 ± 4 µs | 85.8 ± 3 ns |
 
-The local Python 3.12 / NumPy 2.5.1 measured pass on 2026-08-01 also produced
-the following observations for the retained single-compaction references:
+The combined batch, draw, take, update, and non-mutating merge path exposes the
+cost of the complete immutable boundary:
+
+| Active | Dense combined | Packed combined |
+| ---: | ---: | ---: |
+| 100% | 192 ± 2 µs | 351 ± 6 µs |
+| 75% | 186 ± 3 µs | 277 ± 3 µs |
+| 25% | 185 ± 3 µs | 126 ± 4 µs |
+| 1% | 186 ± 5 µs | 53.8 ± 2 µs |
+| 0% | 183 ± 1 µs | 1.84 ± 0.05 µs |
+
+The retained single-compaction scenario results across every configured size
+were:
+
+| Scenario | 2,000 | 10,000 | 100,000 |
+| --- | ---: | ---: | ---: |
+| Lantern Run, dense | 593 ± 1 µs | 1.73 ± 0.01 ms | 15.2 ± 0.3 ms |
+| Lantern Run, packed | 712 ± 5 µs | 1.44 ± 0.05 ms | 10.1 ± 0.1 ms |
+| Dragon Hunt, dense | 11.4 ± 0.4 ms | 35.4 ± 0.5 ms | 315 ± 4 ms |
+| Dragon Hunt, packed | 8.59 ± 0.06 ms | 19.4 ± 1 ms | 140 ± 3 ms |
+| Dragon Hunt, NumPy compacted | 7.92 ± 0.1 ms | 17.1 ± 0.3 ms | 132 ± 2 ms |
+
+The deterministic draw and transition observations for the previously cited
+scenario sizes remain:
 
 | Scenario | Dense draws | Packed draws | Dense transitions | Packed transitions | Dense time | Packed time |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Lantern Run, 10,000 repetitions | 60,000 | 27,596 | 60,000 | 27,596 | 1.71 ± 0.03 ms | 1.48 ± 0.01 ms |
-| Dragon Hunt, 2,000 repetitions | 660,000 | 241,670 | 30,000 | 10,985 | 11.3 ± 0.3 ms | 8.18 ± 0.2 ms |
+| Lantern Run, 10,000 repetitions | 60,000 | 27,596 | 60,000 | 27,596 | 1.73 ± 0.01 ms | 1.44 ± 0.05 ms |
+| Dragon Hunt, 2,000 repetitions | 660,000 | 241,670 | 30,000 | 10,985 | 11.4 ± 0.4 ms | 8.59 ± 0.06 ms |
 
 ### Dragon Hunt compaction granularity
 
@@ -102,11 +125,13 @@ The milestone therefore retains one compaction per round. Phase-local
 recompaction remains semantically valid, but should be justified by the cost
 of the work it skips rather than by draw count alone.
 
-At 100% and 75% activity, packing overhead is comparable to or greater than
-the saved draw work. At lower active fractions it is materially faster in
-this local environment. Both cited reference scenarios also benefited because
-their active populations shrink over time. These timing values are descriptive
-evidence, not portable thresholds or correctness requirements.
+An isolated packed draw is already competitive when all repetitions are
+active, but the complete immutable batch/take/merge path is slower at 100% and
+75% activity. It crosses over by the measured 25% point and is materially
+faster at lower activity. Lantern Run has fixed overhead at 2,000 repetitions
+but benefits at 10,000 and 100,000; Dragon Hunt benefits at all measured sizes.
+These timing values are descriptive evidence, not portable thresholds or
+correctness requirements.
 
 ## Recommendation
 
