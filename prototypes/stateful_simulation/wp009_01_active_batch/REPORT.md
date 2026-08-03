@@ -32,7 +32,8 @@ active repetition. Structural-cell activity and history are deferred.
 ## Wrapper and Pool evidence
 
 `take` and `merge` retain Roll, Event, and Pool wrapper types and structural
-shapes. Merge is non-broadcasting and changes only stable active positions.
+shapes. Merge is non-broadcasting, does not mutate its inputs, and changes only
+stable active positions in its returned dense value.
 Roll merge uses NumPy result-type promotion; Event stays Boolean. Pool merge
 requires matching sides, dice extent, structural shape, dtype, and ownership.
 Every compact Pool entry is a real die result, so sum, min/max, keep/drop, and
@@ -77,13 +78,29 @@ are deterministic:
 | 1% | 40,000 | 400 | 117 ± 4 µs | 47.4 ± 0.2 µs |
 | 0% | 40,000 | 0 | 114 ± 2 µs | 12.5 ± 0.07 µs |
 
-The local Python 3.12 / NumPy 2.5.1 measured pass on 2026-08-01 also
-produced the following scenario observations:
+The local Python 3.12 / NumPy 2.5.1 measured pass on 2026-08-01 also produced
+the following observations for the retained single-compaction references:
 
 | Scenario | Dense draws | Packed draws | Dense transitions | Packed transitions | Dense time | Packed time |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Lantern Run, 10,000 repetitions | 60,000 | 27,596 | 60,000 | 27,596 | 1.71 ± 0.03 ms | 1.48 ± 0.01 ms |
 | Dragon Hunt, 2,000 repetitions | 660,000 | 241,670 | 30,000 | 10,985 | 11.3 ± 0.3 ms | 8.18 ± 0.2 ms |
+
+### Dragon Hunt compaction granularity
+
+A review experiment added a second active batch between the player and dragon
+attack phases so dragons defeated by players consumed no counterattack draws.
+At 2,000 repetitions it reduced packed consumption from 241,670 draws across
+10,985 round-level transitions to 220,102 draws across 10,871 transitions.
+The additional position discovery, compact-batch setup, packing, merge-back,
+and allocation nevertheless decreased end-to-end performance in the owner's
+measurement. No exact timing value or recoverable implementation was retained,
+so that performance comparison is qualitative and is not presented as a
+portable threshold.
+
+The milestone therefore retains one compaction per round. Phase-local
+recompaction remains semantically valid, but should be justified by the cost
+of the work it skips rather than by draw count alone.
 
 At 100% and 75% activity, packing overhead is comparable to or greater than
 the saved draw work. At lower active fractions it is materially faster in
@@ -98,4 +115,6 @@ whole-repetition packing and merge-back, subject to the remaining WP-009
 comparison with event-masked sampling and callback orchestration. Production
 names, module placement, Pool persistence, performance strategy, history, and
 stronger RNG guarantees remain owner decisions. A hidden density switch should
-not be adopted because it silently changes RNG consumption.
+not be adopted because it silently changes RNG consumption. Production design
+should likewise avoid unconditional phase-local recompaction: fewer random
+draws did not imply lower runtime in the Dragon Hunt experiment.

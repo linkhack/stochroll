@@ -105,19 +105,19 @@ class ActiveBatch:
         if type(base) is Roll:
             roll_update = cast(Roll, update)
             dtype = np.result_type(base.values.dtype, roll_update.values.dtype)
-            values = base.values.astype(dtype, copy=False)
+            values = base.values.astype(dtype, copy=True)
             values[self._positions] = roll_update.values
             return Roll(cast(RollArray, values))
 
         if type(base) is Event:
             event_update = cast(Event, update)
-            values = base.values
+            values = base.values.copy()
             values[self._positions] = event_update.values
             return Event(values)
 
         base_pool = cast(Pool, base)
         update_pool = cast(Pool, update)
-        values = base_pool.values
+        values = base_pool.values.copy()
         values[self._positions] = update_pool.values
         return Pool(
             values,

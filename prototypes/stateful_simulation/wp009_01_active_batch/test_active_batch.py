@@ -55,6 +55,8 @@ def test_take_and_merge_preserve_wrappers_shapes_and_inactive_state() -> None:
     assert batch is not None
     base_roll = Roll(np.arange(24, dtype=np.int16).reshape(4, 2, 3))
     base_event = Event(np.array([False, True, False, True]))
+    original_roll = base_roll.values.copy()
+    original_event = base_event.values.copy()
 
     compact_roll = batch.take(base_roll)
     compact_event = batch.take(base_event)
@@ -72,7 +74,8 @@ def test_take_and_merge_preserve_wrappers_shapes_and_inactive_state() -> None:
     np.testing.assert_array_equal(merged.values[[0, 2]], base_roll.values[[0, 2]])
     np.testing.assert_array_equal(merged.values[[1, 3]], 1.5)
     np.testing.assert_array_equal(merged_event.values, [False, False, False, False])
-    np.testing.assert_array_equal(base_roll.values, np.arange(24).reshape(4, 2, 3))
+    np.testing.assert_array_equal(base_roll.values, original_roll)
+    np.testing.assert_array_equal(base_event.values, original_event)
 
 
 def test_compact_draws_pool_operations_rerolls_and_merge_use_shared_rng() -> None:
@@ -102,9 +105,11 @@ def test_compact_draws_pool_operations_rerolls_and_merge_use_shared_rng() -> Non
         sides=6,
         roller=roller,
     )
+    original_base = base.values.copy()
     merged = batch.merge(base, rerolled)
     assert merged.roller is roller
     np.testing.assert_array_equal(merged.values[[1, 3, 4]], 1)
+    np.testing.assert_array_equal(base.values, original_base)
 
 
 def test_validation_rejects_invalid_merge_metadata_without_mutation() -> None:

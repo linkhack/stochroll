@@ -309,9 +309,7 @@ def dragon_hunt_numpy(
             active_players,
         )
 
-        continuing = (
-            (next_dragon > 0) & ((next_players > 0).count() > 0)
-        ).values
+        continuing = ((next_dragon > 0) & ((next_players > 0).count() > 0)).values
         if step + 1 == limit:
             continuing[:] = False
 
